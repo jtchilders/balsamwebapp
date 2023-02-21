@@ -1,0 +1,224 @@
+
+{% load static %}
+
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.13.2/css/jquery.dataTables.min.css">
+    <script type="text/javascript" src="https://code.jquery.com/jquery-3.5.1.js"></script>
+    <script type="text/javascript" src="https://cdn.datatables.net/1.13.2/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script type="text/javascript">
+
+$(document).ready( function () {
+ 
+    $('#jobdata').DataTable({
+        paging: false,
+        ordering: true,
+        info: false,
+    });
+
+    $('#site_status.True').each(function(){
+        $(this).css('background-color','white');
+        $(this).css('color','red');
+        $(this).text("OFFLINE");
+    });
+    $('#site_status.False').each(function(){
+        $(this).css('background-color','white');
+        $(this).css('color','green');
+        $(this).text("ONLINE");
+    });
+
+    // adding chartjs
+    const chart_canvas = document.getElementById('state_timeline');
+
+    var running = {
+        label: "RUNNING",
+        data: {{ RUNNING|safe }},
+        lineTension: 0,
+        fill: false,
+        borderColor: 'blue'
+    };
+
+    var queued = {
+        label: "READY",
+        data: {{ READY|safe }},
+        lineTension: 0,
+        fill: false,
+        borderColor: 'violet'
+    };
+
+    var failed = {
+        label: "FAILED",
+        data: {{ FAILED|safe }},
+        lineTension: 0,
+        fill: false,
+        borderColor: 'red'
+    };
+
+    var job_finished = {
+        label: "JOB_FINISHED",
+        data: {{ JOB_FINISHED|safe }},
+        lineTension: 0,
+        fill: false,
+        borderColor: 'green'
+    };
+
+
+    var combo_data = {
+    labels: {{ xlabels|safe }},
+    datasets: [queued, failed, job_finished, running]
+    };
+
+    var chartOptions = {
+        layout: {
+            padding: 20
+        },
+        legend: {
+            display: true,
+            position: 'top',
+            labels: {
+            boxWidth: 80,
+            fontColor: 'black'
+            },
+        },
+        animations: {
+            tension: {
+                duration: 10000,
+                easing: 'linear',
+                from: 1,
+                to: 0,
+                loop: true
+            }
+        },
+        zoom: {
+            enabled: true,
+            mode: 'x',
+        }
+    };
+
+
+    var chart = new Chart(chart_canvas, {
+        type: 'line',
+        data: combo_data,
+        options: chartOptions
+    });
+
+    var now = new Date();
+    now.setMinutes(now.getMinutes());
+    document.getElementById('end_time').value = now.toISOString().slice(0,16);
+    var start = new Date();
+    start.setMinutes(start.getMinutes() - 7*24*60);
+    document.getElementById('start_time').value = start.toISOString().slice(0,16);
+
+    jQuery('#update_plot').click(
+        function(){
+            send_data = {
+                'start_time': document.getElementById('start_time').value,
+                'end_time': document.getElementById('end_time').value,
+                'nbins': document.getElementById('nbins').value
+            }
+
+            jQuery.getJSON('/balsam/select_date_range/', send_data, function(data, status){
+
+                if (data.update){
+                    var running = {
+                        label: "RUNNING",
+                        data: data.RUNNING,
+                        lineTension: 0,
+                        fill: false,
+                        borderColor: 'blue'
+                    };
+
+                    var queued = {
+                        label: "READY",
+                        data: data.READY,
+                        lineTension: 0,
+                        fill: false,
+                        borderColor: 'violet'
+                    };
+
+                    var failed = {
+                        label: "FAILED",
+                        data: data.FAILED,
+                        lineTension: 0,
+                        fill: false,
+                        borderColor: 'red'
+                    };
+
+                    var job_finished = {
+                        label: "JOB_FINISHED",
+                        data: data.JOB_FINISHED,
+                        lineTension: 0,
+                        fill: false,
+                        borderColor: 'green'
+                    };
+                    var combo_data = {
+                        labels: data.xlabels,
+                        datasets: [queued, failed, job_finished, running]
+                    };
+
+                    
+                    chart.data.labels = data.xlabels;
+                    chart.data.datasets = combo_data.datasets;
+                    chart.update();
+                }
+
+                document.getElementById('update_msg').textContent = data.msg
+                
+            });
+            
+        });
+} );
+
+    </script>
+</head>
+<body>
+
+<H1>Site {{ site.name }} is <span id="site_status" class="{{ site.site_expired }}" title="{{ site.last_refresh_diff }}"> {{ site.last_refresh_diff }} </span> </H1>
+
+
+<!-- <img src="{% static 'balsamwebapp/state_timeline.png' %}" alt="My image"> -->
+
+Showing time range: <input type="datetime-local" id="start_time" name="start-time"> - to -
+<input type="datetime-local" id="end_time" name="end-time"> - with 
+<input type="number" id="nbins" name="nbins"
+       min="10" max="200" value="100"> bins  <input type="submit" id="update_plot" value="Update" />
+<span id="update_msg"></span>
+
+<div>
+    <canvas id="state_timeline"></canvas>
+</div>
+
+
+<h1>Jobs</h1>
+Count {{ jobcount }}
+<table id="jobdata" class="display" style="width:100%">
+    <thead>
+        <tr>
+            <th>id</th>
+            <th>app_id</th>
+            <th>batch_job_id</th>
+            <th>tags</th>
+            <th>state</th>
+            <th>last_update</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for result in jobs.itertuples %}
+        <tr>
+            <td>{{ result.id }}</td>
+            <td>{{ result.app_id }}</td>
+            <td>{{ result.batch_job_id }}</td>
+            <td>{{ result.tags }}</td>
+            <td>{{ result.state }}</td>
+            <td>{{ result.last_update }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table> 
+
+
+
+</body>
+</html>

@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Login</title>
+    <style>
+      h1 {
+        margin: 2em 0;
+      }
+    </style>
+  <script>
+  var client_id;
+  var device_code;
+  var access_token = 0;
+
+  function generate_uuid() {
+    return this.crypto.randomUUID();
+  }
+
+  function querySites() {
+    var xhttp = new XMLHttpRequest();
+    xhttp.onreadystatechange = function() {
+         //document.getElementById("main").innerHTML=this.responseText;
+         const response = JSON.parse(xhttp.responseText)
+         sites = response['results']
+         sitenames = ""
+         //sites.foreach( function(s) { sitenames += "s " } );
+         document.getElementById("main").innerHTML = ""
+         for( i=0; i<sites.length; i++ )
+         {
+           s = sites[i]['name'] + sites[i]['id'] + "<br>"
+           document.getElementById("main").innerHTML += sites[i]['name'] + sites[i]['id'] + "<br>"
+         }
+            
+    };
+    // NOTE: The URL here must end with a trailing slash!
+    xhttp.open("GET", "https://balsam-dev.alcf.anl.gov/sites/");
+    xhttp.setRequestHeader("Content-type", "application/json");
+    xhttp.setRequestHeader("Authorization", "Bearer " + access_token);
+    xhttp.send("");
+  }
+
+  function queryBatchJobs() {
+    var xhttp = new XMLHttpRequest();
+    xhttp.onreadystatechange = function() {
+         document.getElementById("main").innerHTML=this.responseText;
+    };
+    // NOTE: The URL here must end with a trailing slash!
+    xhttp.open("GET", "https://balsam-dev.alcf.anl.gov/batch-jobs/");
+    xhttp.setRequestHeader("Content-type", "application/json");
+    xhttp.setRequestHeader("Authorization", "Bearer " + access_token);
+    xhttp.send("");
+  }
+
+  function setCookie(cname, cvalue, exdays) {
+    const d = new Date();
+    d.setTime(d.getTime() + (exdays*24*60*60*1000));
+    let expires = "expires="+ d.toUTCString();
+    document.cookie = cname + "=" + cvalue + ";" + expires + ";path=/";
+  }
+
+  function getCookie(cname) {
+    let name = cname + "=";
+    let decodedCookie = decodeURIComponent(document.cookie);
+    let ca = decodedCookie.split(';');
+    for(let i = 0; i <ca.length; i++) {
+      let c = ca[i];
+      while (c.charAt(0) == ' ') {
+        c = c.substring(1);
+      }
+      if (c.indexOf(name) == 0) {
+        return c.substring(name.length, c.length);
+      }
+    }
+    return "";
+  }
+
+  window.onload = function(){ 
+    access_token = getCookie("access_token"); 
+    console.log("Got cookie:" + access_token); 
+    if( access_token != 0 )
+    {
+        //document.getElementById('main').innerHTML="Logged in already";
+        querySites();
+    }
+  }
+
+  var polling=1;
+  function poll_for_token() {
+
+        var xmlhttp = new XMLHttpRequest();   // new HttpRequest instance 
+        xmlhttp.onload = () => {
+          // print JSON response
+          if (xmlhttp.status >= 200 && xmlhttp.status < 300) {
+            // parse JSON
+            const response = JSON.parse(xmlhttp.responseText)
+            setCookie("access_token", response['access_token'])
+            polling=0;
+          }
+        }
+        data = "grant_type=urn:ietf:params:oauth:grant-type:device_code&device_code="+device_code+"&client_id="+String(client_id)
+
+        var theUrl = "/auth/device/token";
+        xmlhttp.open("POST", theUrl);
+        xmlhttp.setRequestHeader("Accept", "application/json");
+        xmlhttp.setRequestHeader('Content-type', 'application/x-www-form-urlencoded');
+        xmlhttp.send(data)
+
+        if(polling) setTimeout(poll_for_token, 5000);
+  
+  }
+
+  function do_login() {
+        console.log("In do_login");
+
+        client_id = generate_uuid();
+        data = "client_id="+String(client_id)
+
+        var xmlhttp = new XMLHttpRequest();   // new HttpRequest instance 
+        xmlhttp.onload = () => {
+          // print JSON response
+          if (xmlhttp.status >= 200 && xmlhttp.status < 300) {
+            // parse JSON
+            const response = JSON.parse(xmlhttp.responseText)
+            console.log(response)
+            device_code = response['device_code'];
+            window.open(response['verification_uri_complete'], "_blank");
+            setTimeout(poll_for_token, 5000);
+          }
+        }
+        var theUrl = "https://balsam-dev.alcf.anl.gov/auth/device/login";
+        xmlhttp.open("POST", theUrl);
+        xmlhttp.setRequestHeader("Accept", "application/json");
+        xmlhttp.setRequestHeader('Content-type', 'application/x-www-form-urlencoded');
+        xmlhttp.send(data)
+  }
+  </script>
+  </head>
+
+  <body>
+  <a href="javascript:querySites()">Sites</a>
+  <a href="javascript:queryBatchJobs()">BatchJobs</a>
+  <div id="main">
+  <form action="javascript:do_login()" method="post">
+    <button name="foo" value="upvote">Sign in</button>
+  </form>
+  </div>
+  </body>
+</html>

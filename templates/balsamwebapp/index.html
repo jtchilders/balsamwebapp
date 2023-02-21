@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.13.2/css/jquery.dataTables.min.css">
+    <script type="text/javascript" src="https://code.jquery.com/jquery-3.5.1.js"></script>
+    <script type="text/javascript" src="https://cdn.datatables.net/1.13.2/js/jquery.dataTables.min.js"></script>
+    <script type="text/javascript">
+$(document).ready( function () {
+    $('#sitedata').DataTable({
+        paging: false,
+        ordering: true,
+        info: false,
+        searching: false,
+    });
+
+    $('#sitedata td.True').each(function(){
+        $(this).css('background-color','red');
+        $(this).css('color','white');
+    });
+    $('#sitedata td.False').each(function(){
+        $(this).css('background-color','green');
+        $(this).css('color','white');
+    });
+} );
+    </script>
+    <style>
+        /* unvisited link */
+        a:link {
+        color: white;
+        text-decoration: none;
+        }
+
+        /* visited link */
+        a:visited {
+        color: white;
+        text-decoration: none;
+        }
+
+        /* mouse over link */
+        a:hover {
+        color: white;
+        text-decoration: underline;
+        }
+
+        /* selected link */
+        a:active {
+        color: white;
+        text-decoration: none;
+        }
+
+    </style>
+</head>
+<body>
+
+{% load static %}
+
+
+<h1>Sites</h1>
+<table id="sitedata" class="display" style="width:500px">
+    <thead>
+        <tr>
+            <th>name</th>
+            <th>queued jobs</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for result in site_data.itertuples %}
+        <tr>
+            <td class="{{ result.site_expired }}" title="{{ result.last_refresh_diff }}"><a href="{% url 'sitedash' result.id %}">{{ result.name }}</a></td>
+            <td>{{ result.nqueued }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+
+</body>
+</html>
