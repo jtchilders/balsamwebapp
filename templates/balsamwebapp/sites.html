@@ -1,0 +1,312 @@
+
+{% load static %}
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.13.2/css/jquery.dataTables.min.css">
+    <script type="text/javascript" src="https://code.jquery.com/jquery-3.5.1.js"></script>
+    <script type="text/javascript" src="https://cdn.datatables.net/1.13.2/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/danfojs@1.1.2/lib/bundle.min.js"></script>
+    <script src="{% static 'balsamwebapp/rest_api_pr.js' %}"></script>
+    
+    <script>
+var sites_data = null;
+var apps_data = {};
+var jobs_data = {};
+var batch_job_data = {};
+$(document).ready(function() {
+    if(have_token()){
+        create_sites_table();
+    }
+    else{
+        //  no cookie found so need to setup form to get token from file.
+        let tokenform = document.createElement("form");
+        tokenform.id = "config_file_form";
+        tokenform.onchange = function(){setTimeout(create_sites_table,2000);};
+        let tokenlabel = document.createElement("label");
+        tokenlabel.appendChild(document.createTextNode("Select Balsam 'client.yml' file from your home directory: "));
+        tokenform.appendChild(tokenlabel);
+        let tokeninput = document.createElement("input");
+        tokeninput.type="file";
+        tokeninput.onchange=onBalsamTokenFileChange;
+        tokenform.appendChild(tokeninput);
+        
+        let title = document.getElementById("title");
+        document.body.insertBefore(tokenform,title);
+    }
+});
+
+function create_sites_table() {
+    let sites_pr = get_sites(token).then(function (response){
+        // console.log(response.url);
+        sites_data = response.data;
+    }).then( function(){
+        let pr = [];
+        for(let i=0;i<sites_data["results"].length;i++){
+            let site_id = sites_data["results"][i]["id"];
+            pr.push(get_apps(token,{site_id:site_id}));
+            pr.push(get_jobs(token,{site_id:site_id}));
+            pr.push(get_jobs(token,{site_id:site_id,state:["CREATED","AWAITING_PARENTS","READY","STAGED_IN","PREPROCESSED","RESTART_READY"]}));
+            pr.push(get_jobs(token,{site_id:site_id,state:["RUN_ERROR","RUN_TIMEOUT","FAILED"]}));
+            pr.push(get_jobs(token,{site_id:site_id,state:"JOB_FINISHED"}));
+            pr.push(get_batch_jobs(token,{site_id:site_id}));
+            pr.push(get_batch_jobs(token,{site_id:site_id,state:"finished"}));
+            pr.push(get_batch_jobs(token,{site_id:site_id,state:"running"}));
+            pr.push(get_batch_jobs(token,{site_id:site_id,state:"submit_failed"}));
+        }
+
+        Promise.all(pr).then(function(responses){
+            for(const response of responses){
+                let data = response.data;
+                let url = response.url;
+                // get site id 
+                let url_parts = url.split('&');
+                let site_id = 0;
+                for(const part of url_parts){
+                    if(part.includes("site_id")){
+                        site_id = part.split("=")[1];
+                    }
+                }
+                console.log(url,site_id);
+                if(url.includes("apps")){
+                    // console.log("apps");
+                    apps_data[site_id] = data["results"].length;
+                }
+                else if(url.includes("batch-jobs")){
+                    // console.log("batch-jobs");
+                    if(!(site_id in batch_job_data)){
+                        batch_job_data[site_id] = {};
+                    }
+                    //pending_submission --> queued pending_submission --> submit_failed queued --> running running --> finished pending_submission --> pending_deletion queued --> pending_deletion running --> pending_deletion pending_deletion --> finished
+                    // console.log(data["results"]);
+                    if(url.includes("state")){
+                        if(url.includes("finished")){
+                            batch_job_data[site_id]["finished"] = data["results"].length;
+                        }
+                        else if(url.includes("running")){
+                            batch_job_data[site_id]["running"] = data["results"].length;
+                        }
+                        else if(url.includes("submit_failed")){
+                            batch_job_data[site_id]["failed"] = data["results"].length;
+                        }
+                    }
+                    else{
+                        batch_job_data[site_id]["total"] = data["results"].length;
+                    }
+                }
+                else if(url.includes("jobs")){
+                    // console.log("jobs");
+                    if(!(site_id in jobs_data)){
+                        jobs_data[site_id] = {};
+                    }
+                    if(url.includes("state")){
+                        if(url.includes("CREATED")){
+                            jobs_data[site_id]["ready"] = data["results"].length;
+                        }
+                        else if(url.includes("FAILED")){
+                            jobs_data[site_id]["failed"] = data["results"].length;
+                        }
+                        else if(url.includes("JOB_FINISHED")){
+                            jobs_data[site_id]["finished"] = data["results"].length;
+                        }
+                    }
+                    else{
+                        jobs_data[site_id]["total"] = data["results"].length;
+                    }
+                }
+            }
+        }
+        ).then( function() {
+            console.log("fill table");
+            fill_table();
+        }).catch(error => {
+        console.error('network error:',error);
+        });
+    }).catch(error => {
+        console.error('network error:',error);
+    });
+
+}
+
+
+function fill_table(){
+    document.getElementById("sites_count").textContent = sites_data["count"];
+    document.getElementById("sites_recv").textContent = sites_data["results"].length;
+
+    let sitedata = [];
+    let idLookup = {};
+    for(let i = 0;i < sites_data["results"].length; i++){
+        result = sites_data["results"][i];
+        let site_id = result["id"];
+        let output = {};
+        output["name"] = result["name"];
+        output["id"] = site_id;
+        output["queued_jobs"] = Object.keys(result["queued_jobs"]).length;
+
+        let created = new Date(Date.parse(result["creation_date"]))
+        output["creation_date"] = created;
+
+        let last_refresh = new Date(Date.parse(result["last_refresh"]));
+        let current_time = new Date();
+        let diff = (current_time - last_refresh ) * 1e-3 / 60;
+        let days = diff / 60 / 24;
+        output["last_refresh"] = days.toFixed(4);
+        idLookup[result["name"]] = result["id"];
+        sitedata.push(output);
+
+        output["num_jobs"] = jobs_data[site_id]["total"];
+        output["failed_jobs"] = jobs_data[site_id]["failed"];
+        output["ready_jobs"] = jobs_data[site_id]["ready"];
+        output["finished_jobs"] = jobs_data[site_id]["finished"];
+
+        output["num_apps"] = apps_data[site_id];
+
+        output["num_batchjobs"] = batch_job_data[site_id]["total"];
+        output["failed_batchjobs"] = batch_job_data[site_id]["failed"];
+        output["running_batchjobs"] = batch_job_data[site_id]["running"];
+        output["finished_batchjobs"] = batch_job_data[site_id]["finished"];
+    }
+
+    $("#sitedata").DataTable({
+        data: sitedata,
+        paging: false,
+        ordering: true,
+        info: false,
+        searching: false,
+        "columns": [
+            { data: "name" },
+            { data: "queued_jobs" },
+            { data: "last_refresh"},
+            { data: "num_apps"},
+            { data: "num_jobs"},
+            { data: "num_batchjobs"},
+        ],
+        "rowCallback":  function( row, data ) {
+            if( parseFloat(data.last_refresh) < 1){
+                // set name td class
+                row.getElementsByTagName('td')[0].classList.add("False");
+            }
+            else{
+                // set name td class
+                row.getElementsByTagName('td')[0].classList.add("True");
+            }
+            // add link to name td
+            const link = document.createElement("a");
+            link.setAttribute("href", '/balsam/sitedash2/' + idLookup[data.name] + "/");
+            link.textContent = data.name;
+            row.getElementsByTagName('td')[0].textContent = "";
+            row.getElementsByTagName('td')[0].appendChild(link);
+
+        },
+        "columnDefs":[
+            {
+                "targets": 4,
+                "createdCell": function (td, cellData, rowData, row, col) {
+                    let rdy = document.createElement("span");
+                    rdy.style = "color: blue;display: inline-block;width: 5ch;";
+                    rdy.textContent = rowData["ready_jobs"];
+
+                    let done = document.createElement("span");
+                    done.style = "color: green;display: inline-block;width: 5ch;";
+                    done.textContent = rowData["finished_jobs"];
+
+                    let failed = document.createElement("span");
+                    failed.style = "color: red;display: inline-block;width: 5ch;";
+                    failed.textContent = rowData["failed_jobs"];
+
+                    td.textContent = "";
+                    td.appendChild(rdy);
+                    td.appendChild(done);
+                    td.appendChild(failed);
+                },
+                "width": "30ch",
+            },
+            {
+                "targets": 5,
+                "createdCell": function (td, cellData, rowData, row, col) {
+                    let rdy = document.createElement("span");
+                    rdy.style = "color: blue;display: inline-block;width: 5ch;";
+                    rdy.textContent = rowData["running_batchjobs"];
+
+                    let done = document.createElement("span");
+                    done.style = "color: green;display: inline-block;width: 5ch;";
+                    done.textContent = rowData["finished_batchjobs"];
+
+                    let failed = document.createElement("span");
+                    failed.style = "color: red;display: inline-block;width: 5ch;";
+                    failed.textContent = rowData["failed_batchjobs"];
+
+                    td.textContent = "";
+                    td.appendChild(rdy);
+                    td.appendChild(done);
+                    td.appendChild(failed);
+                },
+                "width": "30ch",
+            },
+        ]
+    });
+
+    
+    $('#sitedata td.True').each(function(){
+        $(this).css('background-color','red');
+        $(this).css('color','white');
+    });
+    $('#sitedata td.False').each(function(){
+        $(this).css('background-color','green');
+        $(this).css('color','white');
+    });
+    
+}
+    </script>
+    
+    <style>
+/* unvisited link */
+a:link {
+color: white;
+text-decoration: none;
+}
+
+/* visited link */
+a:visited {
+color: white;
+text-decoration: none;
+}
+
+/* mouse over link */
+a:hover {
+color: white;
+text-decoration: underline;
+}
+
+/* selected link */
+a:active {
+color: white;
+text-decoration: none;
+}
+
+    </style>
+</head>
+<body>
+
+
+
+<h1 id="title">Sites</h1>
+<div>site count: <span id="sites_count"></span> sites received: <span id="sites_recv"></span></div>
+<table id="sitedata" class="display">
+    <thead>
+        <tr>
+            <th>name</th>
+            <th>queued </th>
+            <th>last refresh (days)</th>
+            <th>apps</th>
+            <th>jobs<br><span style="color:blue;">ready</span> <span style="color:green;">finished</span> <span style="color:red;">failed</span></th>
+            <th>batch jobs<br><span style="color:blue;">running</span> <span style="color:green;">finished</span> <span style="color:red;">failed</span></th>
+        </tr>
+    </thead>
+    <tbody>
+    </tbody>
+</table>
+
+
+</body>
+</html>

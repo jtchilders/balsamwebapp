@@ -5,11 +5,12 @@ var token = null
 
 function have_token(){
     if(token == null){
-        return false;
+        checkBalsamToken();
+        if(token == null){
+            return false;
+        }
     }
-    else{
-        return true;
-    }
+    return true;
 }
 
 function setCookie(cname, cvalue, exdays) {
@@ -35,20 +36,15 @@ function getCookie(cname) {
 }
 
 function checkBalsamToken() {
-    console.log("in check balsam token");
     let local_token = getCookie(balsamTokenName);
     if (local_token != "") {
-        console.log("have token");
         token = local_token;
     } else {
-        let el = document.getElementById("config_file_form");
-        el.style.visibility = "visible";
         console.log("no token found, enabled file browser");
     }
 }
 
 function onBalsamTokenFileChange(event) {
-    console.log("onBalsamTokenFileChange");
     event.preventDefault();
     var reader = new FileReader();
     reader.onload = onBalsamTokenReaderLoad;
@@ -57,65 +53,124 @@ function onBalsamTokenFileChange(event) {
 
 function onBalsamTokenReaderLoad(event){
     event.preventDefault();
-    // console.log(event.target.result);
     var lines = event.target.result.split('\n');
     var parts = lines[2].split(':');
-    var token = parts[1].trim();
-    console.log('token: '+token);
+    token = parts[1].trim();
     // reply = get_sites(token,offset=10);
     setCookie(balsamTokenName,token,3);
     let el = document.getElementById("config_file_form");
-    el.style.visibility = "hidden";
+    el.style.display = "none";
 }
 
-async function make_request(url,token){
+async function make_request(url,token,onload){
     var xhttp = new XMLHttpRequest();
-    xhttp.onload = function() {
-        alert(`Loaded: ${xhttp.status} ${xhttp.response}`);
-    };
+    xhttp.onload = function(){onload(xhttp)};
     xhttp.onerror = function() { // only triggers if the request couldn't be made at all
-        alert(`Network Error`);
+        alert(`make_request: Network Error`);
     };
-    xhttp.onprogress = function(event) { // triggers periodically
-        // event.loaded - how many bytes downloaded
-        // event.lengthComputable = true if the server sent Content-Length header
-        // event.total - total number of bytes (if lengthComputable)
-        alert(`Received ${event.loaded} of ${event.total}`);
-    };
+    // xhttp.onprogress = function(event) { // triggers periodically
+    //     // event.loaded - how many bytes downloaded
+    //     // event.lengthComputable = true if the server sent Content-Length header
+    //     // event.total - total number of bytes (if lengthComputable)
+    //     console.log(`Received ${event.loaded} of ${event.total}`);
+    // };
     xhttp.open("GET", "https://balsam-dev.alcf.anl.gov/sites/");
     xhttp.setRequestHeader("Content-Type", "application/json");
     xhttp.setRequestHeader("Authorization", "Bearer " + token);
     xhttp.send("");
-    
-    // if 'detail' in reply.keys() and 'Not authenticated' in reply['detail']:
-    //     raise LoginExpired('Login Expired, reauthenticate')
-
-    return xhttp.response;
 }
 
 function create_custom_url(path,kwargs){
     let url = base_url + path + '/?'
     for(let key in kwargs){
         let value = kwargs[key]
-        if(value != null)
-            url += key + '=' + value + '&'
+        if(value != null){
+            if(Array.isArray(value)){
+                for(let i=0;i<value.length;i++){
+                    url += key + '=' + str(value[i]) + '&'
+                }
+            }
+            else{
+                url += key + '=' + value + '&'
+            }
+        }
     }
     if(url.endsWith('&'))
         url = url.slice(0,url.length-1);
     return url
 }
 
-function get_sites(token,limit=10,offset=0,
-    id=null,
+function get_sites(token,onload_callback,limit=10,offset=0,
     name=null,
+    path=null,
+    id=null, // one or array
+    last_refresh_after=null,
     ){
 
     url = create_custom_url('sites',{
             "limit":limit,
             "offset":offset,
             "id":id,
-            "name":name
+            "name":name,
+            "last_refresh_after":last_refresh_after,
+        });
+    make_request(url,token,onload_callback)
+}
+
+function get_apps(token,onload_callback,limit=10,offset=0,
+    id=null, // one or array
+    name=null,
+    site_id=null, // one or array
+    site_path=null,
+    site_name=null,
+    ){
+
+    url = create_custom_url('apps',{
+            "limit":limit,
+            "offset":offset,
+            "id":id,
+            "name":name,
+            "site_id":site_id,
+            "site_path":site_path,
+            "site_name":site_name,
         });
     console.log(url)
-    return make_request(url,token)
+    make_request(url,token,onload_callback)
+}
+
+
+function get_jobs(token,onload_callback,limit=10,offset=0,
+    id=null, // one or array
+    parent_id=null, // one or array
+    app_id=null, // one or array
+    site_id=null, // one or array
+    batch_job_id=null, // one or array
+    last_update_before=null,
+    last_update_after=null,
+    workdir__contains=null,
+    state__ne=null, // CREATED, AWAITING_PARENTS, READY, STAGED_IN, PREPROCESSED, RUNNING, RUN_DONE, RUN_ERROR, RUN_TIMEOUT, RESTART_READY, POSTPROCESSED, STAGED_OUT, JOB_FINISHED, FAILED
+    state=null, // one or array
+    tags=null, // one or array
+    pending_file_cleanup=null,
+    ordering=null, // last_update, -last_update, id, -id, state, -state, workdir, -workdir
+    ){
+
+    url = create_custom_url('jobs',{
+            "limit":limit,
+            "id":id,
+            "parent_id":parent_id,
+            "app_id":app_id,
+            "site_id":site_id,
+            "batch_job_id":batch_job_id,
+            "last_update_before":last_update_before,
+            "last_update_after":last_update_after,
+            "workdir__contains":workdir__contains,
+            "state__ne":state__ne,
+            "state":state,
+            "tags":tags,
+            "pending_file_cleanup":pending_file_cleanup,
+            "ordering":ordering,
+        });
+    console.log(url)
+    make_request(url,token,onload_callback)
 }
