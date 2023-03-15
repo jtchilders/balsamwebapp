@@ -7,175 +7,316 @@
     <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.13.2/css/jquery.dataTables.min.css">
     <script type="text/javascript" src="https://code.jquery.com/jquery-3.5.1.js"></script>
     <script type="text/javascript" src="https://cdn.datatables.net/1.13.2/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/danfojs@1.1.2/lib/bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="{% static 'balsamwebapp/rest_api_pr.js' %}"></script>
     <script type="text/javascript">
 
+var site_id = {{ site_id }};
+var jdf = null;
+var evdf = null;
+var default_start_date = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+var default_end_date = new Date();
 $(document).ready( function () {
- 
-    $('#jobdata').DataTable({
-        paging: false,
-        ordering: true,
-        info: false,
-    });
+    if(have_token()){
+        get_data();
+    }
+    else{
+        //  no cookie found so need to setup form to get token from file.
+        let tokenform = document.createElement("form");
+        tokenform.id = "config_file_form";
+        tokenform.onchange = function(){setTimeout(get_data,2000);};
+        let tokenlabel = document.createElement("label");
+        tokenlabel.appendChild(document.createTextNode("Select Balsam 'client.yml' file from your home directory: "));
+        tokenform.appendChild(tokenlabel);
+        let tokeninput = document.createElement("input");
+        tokeninput.type="file";
+        tokeninput.onchange=onBalsamTokenFileChange;
+        tokenform.appendChild(tokeninput);
+        
+        let title = document.getElementById("title");
+        document.body.insertBefore(tokenform,title);
+    }
 
-    $('#site_status.True').each(function(){
-        $(this).css('background-color','white');
-        $(this).css('color','red');
-        $(this).text("OFFLINE");
-    });
-    $('#site_status.False').each(function(){
-        $(this).css('background-color','white');
-        $(this).css('color','green');
-        $(this).text("ONLINE");
-    });
-
-    // adding chartjs
-    const chart_canvas = document.getElementById('state_timeline');
-
-    var running = {
-        label: "RUNNING",
-        data: {{ RUNNING|safe }},
-        lineTension: 0,
-        fill: false,
-        borderColor: 'blue'
-    };
-
-    var queued = {
-        label: "READY",
-        data: {{ READY|safe }},
-        lineTension: 0,
-        fill: false,
-        borderColor: 'violet'
-    };
-
-    var failed = {
-        label: "FAILED",
-        data: {{ FAILED|safe }},
-        lineTension: 0,
-        fill: false,
-        borderColor: 'red'
-    };
-
-    var job_finished = {
-        label: "JOB_FINISHED",
-        data: {{ JOB_FINISHED|safe }},
-        lineTension: 0,
-        fill: false,
-        borderColor: 'green'
-    };
-
-
-    var combo_data = {
-    labels: {{ xlabels|safe }},
-    datasets: [queued, failed, job_finished, running]
-    };
-
-    var chartOptions = {
-        layout: {
-            padding: 20
-        },
-        legend: {
-            display: true,
-            position: 'top',
-            labels: {
-            boxWidth: 80,
-            fontColor: 'black'
-            },
-        },
-        animations: {
-            tension: {
-                duration: 10000,
-                easing: 'linear',
-                from: 1,
-                to: 0,
-                loop: true
+    get_sites(token,{id:site_id}).then(function (response){
+        let sd = response.data["results"][0];
+        let last_refresh = new Date(Date.parse(sd["last_refresh"]));
+        let current_time = new Date();
+        let diff = (current_time - last_refresh ) * 1e-3 / 60;
+        let days = diff / 60 / 24;
+        $("#site_name").each(function(){
+            $(this).text(sd["name"]);
+        });
+        $("#site_status").each(function(){
+            if(days > 1){
+                $(this).css('background-color','white');
+                $(this).css('color','red');
+                $(this).text("OFFLINE");
             }
-        },
-        zoom: {
-            enabled: true,
-            mode: 'x',
+            else{
+                $(this).css('background-color','white');
+                $(this).css('color','green');
+                $(this).text("ONLINE");
+            }
+        });
+    });
+
+    document.getElementById('end_time').value = default_end_date.toISOString().slice(0,16);
+    document.getElementById('start_time').value = default_start_date.toISOString().slice(0,16);
+
+});
+
+function get_data(){
+    get_jobs(token,{site_id:site_id,last_update_after:default_start_date.toISOString()}).then( function (response){
+        let jd = response.data;
+        jdf = new dfd.DataFrame(jd["results"]);
+        let apply_func = (x) => {return JSON.stringify(x);};
+        let nt = jdf["tags"].apply(apply_func);
+        jdf.addColumn("tagstr", nt.values,{ inplace:true});
+
+        let table_jdf = jdf.loc({columns:["id","app_id","batch_job_id","tagstr","state"]})
+
+        $('#jobdata').DataTable({
+            data: table_jdf.values,
+            paging: false,
+            ordering: true,
+            info: false,
+        });
+
+
+        // adding chartjs
+        const chart_canvas = document.getElementById('state_timeline');
+
+        let grp = table_jdf.groupby(["state"]);
+
+        let running = 0;
+        if("RUNNING" in grp.colDict){
+            running = grp.colDict["RUNNING"].state.length;
         }
-    };
+        let done = 0;
+        if("JOB_FINISHED" in grp.colDict){
+            done = grp.colDict["JOB_FINISHED"].state.length;
+        }
+        let ready = 0;
+        for(const st of ['CREATED',
+                        'AWAITING_PARENTS',
+                        'READY',
+                        'STAGED_IN',
+                        'PREPROCESSED',
+                        'RESTART_READY']){
+            if(st in grp.colDict){
+                ready = ready + grp.colDict[st].state.length;
+            }
+        }
+        let failed = 0;
+        for(const st of [
+                        'RUN_ERROR',
+                        'RUN_TIMEOUT',
+                        'FAILED',]){
+            if(st in grp.colDict){
+                failed = failed + grp.colDict[st].state.length;
+            }
+        }
 
+        var data = {
+                data: [ready,running,done,failed],
+                backgroundColor: [
+                'rgba(255, 99, 132, 0.2)',
+                'rgba(255, 159, 64, 0.2)',
+                'rgba(255, 205, 86, 0.2)',
+                'rgba(75, 192, 192, 0.2)',
+                'rgba(54, 162, 235, 0.2)',
+                'rgba(153, 102, 255, 0.2)',
+                'rgba(201, 203, 207, 0.2)'
+                ],
+                borderColor: [
+                'rgb(255, 99, 132)',
+                'rgb(255, 159, 64)',
+                'rgb(255, 205, 86)',
+                'rgb(75, 192, 192)',
+                'rgb(54, 162, 235)',
+                'rgb(153, 102, 255)',
+                'rgb(201, 203, 207)'
+                ],
+                borderWidth: 1
+            };
+        var datasets = {
+            labels: ["ready","running","finished","failed"],
+            datasets: [data],
+        };
+        
+        var chartOptions = {
+            layout: {
+                padding: 20
+            },
+            animations: {
+                tension: {
+                    duration: 10000,
+                    easing: 'linear',
+                    from: 1,
+                    to: 0,
+                    loop: true
+                }
+            },
+            zoom: {
+                enabled: true,
+                mode: 'x',
+            },
+            plugins: {
+                legend: {
+                    display: false
+                }
+            }
+        };
 
-    var chart = new Chart(chart_canvas, {
-        type: 'line',
-        data: combo_data,
-        options: chartOptions
+        var chart = new Chart(chart_canvas, {
+            type: 'bar',
+            data: datasets,
+            options: chartOptions
+        });
+        
     });
 
-    var now = new Date();
-    now.setMinutes(now.getMinutes());
-    document.getElementById('end_time').value = now.toISOString().slice(0,16);
-    var start = new Date();
-    start.setMinutes(start.getMinutes() - 7*24*60);
-    document.getElementById('start_time').value = start.toISOString().slice(0,16);
+}
+ 
 
-    jQuery('#update_plot').click(
-        function(){
-            send_data = {
-                'start_time': document.getElementById('start_time').value,
-                'end_time': document.getElementById('end_time').value,
-                'nbins': document.getElementById('nbins').value
-            }
+//     var running = {
+//         label: "RUNNING",
+//         data: {{ RUNNING|safe }},
+//         lineTension: 0,
+//         fill: false,
+//         borderColor: 'blue'
+//     };
 
-            jQuery.getJSON('/balsam/select_date_range/', send_data, function(data, status){
+//     var queued = {
+//         label: "READY",
+//         data: {{ READY|safe }},
+//         lineTension: 0,
+//         fill: false,
+//         borderColor: 'violet'
+//     };
 
-                if (data.update){
-                    var running = {
-                        label: "RUNNING",
-                        data: data.RUNNING,
-                        lineTension: 0,
-                        fill: false,
-                        borderColor: 'blue'
-                    };
+//     var failed = {
+//         label: "FAILED",
+//         data: {{ FAILED|safe }},
+//         lineTension: 0,
+//         fill: false,
+//         borderColor: 'red'
+//     };
 
-                    var queued = {
-                        label: "READY",
-                        data: data.READY,
-                        lineTension: 0,
-                        fill: false,
-                        borderColor: 'violet'
-                    };
+//     var job_finished = {
+//         label: "JOB_FINISHED",
+//         data: {{ JOB_FINISHED|safe }},
+//         lineTension: 0,
+//         fill: false,
+//         borderColor: 'green'
+//     };
 
-                    var failed = {
-                        label: "FAILED",
-                        data: data.FAILED,
-                        lineTension: 0,
-                        fill: false,
-                        borderColor: 'red'
-                    };
 
-                    var job_finished = {
-                        label: "JOB_FINISHED",
-                        data: data.JOB_FINISHED,
-                        lineTension: 0,
-                        fill: false,
-                        borderColor: 'green'
-                    };
-                    var combo_data = {
-                        labels: data.xlabels,
-                        datasets: [queued, failed, job_finished, running]
-                    };
+//     var combo_data = {
+//     labels: {{ xlabels|safe }},
+//     datasets: [queued, failed, job_finished, running]
+//     };
+
+//     var chartOptions = {
+//         layout: {
+//             padding: 20
+//         },
+//         legend: {
+//             display: true,
+//             position: 'top',
+//             labels: {
+//             boxWidth: 80,
+//             fontColor: 'black'
+//             },
+//         },
+//         animations: {
+//             tension: {
+//                 duration: 10000,
+//                 easing: 'linear',
+//                 from: 1,
+//                 to: 0,
+//                 loop: true
+//             }
+//         },
+//         zoom: {
+//             enabled: true,
+//             mode: 'x',
+//         }
+//     };
+
+
+//     var chart = new Chart(chart_canvas, {
+//         type: 'line',
+//         data: combo_data,
+//         options: chartOptions
+//     });
+
+//     jQuery('#update_plot').click(
+//         function(){
+//             send_data = {
+//                 'start_time': document.getElementById('start_time').value,
+//                 'end_time': document.getElementById('end_time').value,
+//                 'nbins': document.getElementById('nbins').value
+//             }
+
+//             jQuery.getJSON('/balsam/select_date_range/', send_data, function(data, status){
+
+//                 if (data.update){
+//                     var running = {
+//                         label: "RUNNING",
+//                         data: data.RUNNING,
+//                         lineTension: 0,
+//                         fill: false,
+//                         borderColor: 'blue'
+//                     };
+
+//                     var queued = {
+//                         label: "READY",
+//                         data: data.READY,
+//                         lineTension: 0,
+//                         fill: false,
+//                         borderColor: 'violet'
+//                     };
+
+//                     var failed = {
+//                         label: "FAILED",
+//                         data: data.FAILED,
+//                         lineTension: 0,
+//                         fill: false,
+//                         borderColor: 'red'
+//                     };
+
+//                     var job_finished = {
+//                         label: "JOB_FINISHED",
+//                         data: data.JOB_FINISHED,
+//                         lineTension: 0,
+//                         fill: false,
+//                         borderColor: 'green'
+//                     };
+//                     var combo_data = {
+//                         labels: data.xlabels,
+//                         datasets: [queued, failed, job_finished, running]
+//                     };
 
                     
-                    chart.data.labels = data.xlabels;
-                    chart.data.datasets = combo_data.datasets;
-                    chart.update();
-                }
+//                     chart.data.labels = data.xlabels;
+//                     chart.data.datasets = combo_data.datasets;
+//                     chart.update();
+//                 }
 
-                document.getElementById('update_msg').textContent = data.msg
+//                 document.getElementById('update_msg').textContent = data.msg
                 
-            });
+//             });
             
-        });
-} );
+//         });
+// } );
 
     </script>
 </head>
 <body>
 
-<H1>Site {{ site.name }} is <span id="site_status" class="{{ site.site_expired }}" title="{{ site.last_refresh_diff }}"> {{ site.last_refresh_diff }} </span> </H1>
+<H1>Site <span id="site_name"></span> is <span id="site_status"> </span> </H1>
 
 
 <!-- <img src="{% static 'balsamwebapp/state_timeline.png' %}" alt="My image"> -->
@@ -190,35 +331,25 @@ Showing time range: <input type="datetime-local" id="start_time" name="start-tim
     <canvas id="state_timeline"></canvas>
 </div>
 
+<div>
+    <canvas id="state_barchart"></canvas>
+</div>
+
 
 <h1>Jobs</h1>
-Count {{ jobcount }}
 <table id="jobdata" class="display" style="width:100%">
     <thead>
         <tr>
-            <th>id</th>
-            <th>app_id</th>
-            <th>batch_job_id</th>
-            <th>tags</th>
-            <th>state</th>
-            <th>last_update</th>
+            <th>ID</th>
+            <th>App ID</th>
+            <th>Batch Job ID</th>
+            <th>Tags</th>
+            <th>State</th>
         </tr>
     </thead>
-    <tbody>
-        {% for result in jobs.itertuples %}
-        <tr>
-            <td>{{ result.id }}</td>
-            <td>{{ result.app_id }}</td>
-            <td>{{ result.batch_job_id }}</td>
-            <td>{{ result.tags }}</td>
-            <td>{{ result.state }}</td>
-            <td>{{ result.last_update }}</td>
-        </tr>
-        {% endfor %}
-    </tbody>
 </table> 
 
-
+<div id="jobs_table"></div>
 
 </body>
 </html>
