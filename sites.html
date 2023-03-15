@@ -19,19 +19,21 @@ $(document).ready(function() {
     }
     else{
         //  no cookie found so need to setup form to get token from file.
-        let tokenform = document.createElement("form");
-        tokenform.id = "config_file_form";
-        tokenform.onchange = function(){setTimeout(create_sites_table,2000);};
-        let tokenlabel = document.createElement("label");
-        tokenlabel.appendChild(document.createTextNode("Select Balsam 'client.yml' file from your home directory: "));
-        tokenform.appendChild(tokenlabel);
-        let tokeninput = document.createElement("input");
-        tokeninput.type="file";
-        tokeninput.onchange=onBalsamTokenFileChange;
-        tokenform.appendChild(tokeninput);
+        do_login();
+
+        // let tokenform = document.createElement("form");
+        // tokenform.id = "config_file_form";
+        // tokenform.onchange = function(){setTimeout(create_sites_table,2000);};
+        // let tokenlabel = document.createElement("label");
+        // tokenlabel.appendChild(document.createTextNode("Select Balsam 'client.yml' file from your home directory: "));
+        // tokenform.appendChild(tokenlabel);
+        // let tokeninput = document.createElement("input");
+        // tokeninput.type="file";
+        // tokeninput.onchange=onBalsamTokenFileChange;
+        // tokenform.appendChild(tokeninput);
         
-        let title = document.getElementById("title");
-        document.body.insertBefore(tokenform,title);
+        // let title = document.getElementById("title");
+        // document.body.insertBefore(tokenform,title);
     }
 });
 
