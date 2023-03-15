@@ -28,18 +28,18 @@ function poll_for_token() {
         // print JSON response
         if (xmlhttp.status >= 200 && xmlhttp.status < 300) {
             // parse JSON
-            const response = JSON.parse(xmlhttp.responseText)
-                setCookie("access_token", response['access_token'])
-                polling=0;
+            const response = JSON.parse(xmlhttp.responseText);
+            setCookie(balsamTokenName, response['access_token'],3);
+            polling=0;
         }
     }
-    data = "grant_type=urn:ietf:params:oauth:grant-type:device_code&device_code="+device_code+"&client_id="+String(client_id)
+    data = "grant_type=urn:ietf:params:oauth:grant-type:device_code&device_code="+device_code+"&client_id="+String(client_id);
 
     var theUrl = "/auth/device/token";
     xmlhttp.open("POST", theUrl);
     xmlhttp.setRequestHeader("Accept", "application/json");
     xmlhttp.setRequestHeader('Content-type', 'application/x-www-form-urlencoded');
-    xmlhttp.send(data)
+    xmlhttp.send(data);
     if(polling) setTimeout(poll_for_token, 5000);
 }
 
