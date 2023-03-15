@@ -22,14 +22,14 @@ var default_end_date = new Date();
 $(document).ready( function () {
     if(have_token()){
         console.log("have token");
-        create_sites_table();
+        get_data();
     }
     else{
         console.log("no token; logging in");
         //  no cookie found so need to setup form to get token from file.
         do_login().then(function (response) {
             console.log("do login completed",response);
-            create_sites_table();
+            get_data();
         }).catch(function (response){
             console.log("do login failed",response);
         });
