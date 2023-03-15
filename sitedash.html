@@ -8,9 +8,10 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="/static/balsamwebapp/js/rest_api_pr.js"></script>
     <script type="text/javascript">
+
 const queryString = window.location.search;
 const urlParams = new URLSearchParams(queryString);
-if(!urlParams.has('product')){
+if(!urlParams.has('site_id')){
     alert("URL must contain '?site_id=<site-id>'");
 }
 const site_id = urlParams.get('site_id');
@@ -20,24 +21,18 @@ var default_start_date = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 var default_end_date = new Date();
 $(document).ready( function () {
     if(have_token()){
-        get_data();
+        console.log("have token");
+        create_sites_table();
     }
     else{
-        do_login();
-        // //  no cookie found so need to setup form to get token from file.
-        // let tokenform = document.createElement("form");
-        // tokenform.id = "config_file_form";
-        // tokenform.onchange = function(){setTimeout(get_data,2000);};
-        // let tokenlabel = document.createElement("label");
-        // tokenlabel.appendChild(document.createTextNode("Select Balsam 'client.yml' file from your home directory: "));
-        // tokenform.appendChild(tokenlabel);
-        // let tokeninput = document.createElement("input");
-        // tokeninput.type="file";
-        // tokeninput.onchange=onBalsamTokenFileChange;
-        // tokenform.appendChild(tokeninput);
-        
-        // let title = document.getElementById("title");
-        // document.body.insertBefore(tokenform,title);
+        console.log("no token; logging in");
+        //  no cookie found so need to setup form to get token from file.
+        do_login().then(function (response) {
+            console.log("do login completed",response);
+            create_sites_table();
+        }).catch(function (response){
+            console.log("do login failed",response);
+        });
     }
 
     get_sites(token,{id:site_id}).then(function (response){

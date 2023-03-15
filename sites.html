@@ -27,20 +27,6 @@ $(document).ready(function() {
         }).catch(function (response){
             console.log("do login failed",response);
         });
-
-        // let tokenform = document.createElement("form");
-        // tokenform.id = "config_file_form";
-        // tokenform.onchange = function(){setTimeout(create_sites_table,2000);};
-        // let tokenlabel = document.createElement("label");
-        // tokenlabel.appendChild(document.createTextNode("Select Balsam 'client.yml' file from your home directory: "));
-        // tokenform.appendChild(tokenlabel);
-        // let tokeninput = document.createElement("input");
-        // tokeninput.type="file";
-        // tokeninput.onchange=onBalsamTokenFileChange;
-        // tokenform.appendChild(tokeninput);
-        
-        // let title = document.getElementById("title");
-        // document.body.insertBefore(tokenform,title);
     }
 });
 
@@ -200,7 +186,7 @@ function fill_table(){
             }
             // add link to name td
             const link = document.createElement("a");
-            link.setAttribute("href", '/static/balsamwebapp/sitedash/?site_id=' + idLookup[data.name]);
+            link.setAttribute("href", '/static/balsamwebapp/sitedash.html?site_id=' + idLookup[data.name]);
             link.textContent = data.name;
             row.getElementsByTagName('td')[0].textContent = "";
             row.getElementsByTagName('td')[0].appendChild(link);
