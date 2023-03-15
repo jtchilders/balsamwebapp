@@ -33,28 +33,30 @@ const wait = function (ms = 1000) {
     });
 };
 
-function check_reply(){
-    // print JSON response
-    if (this.status >= 200 && this.status < 300) {
-        // parse JSON
-        const response = JSON.parse(this.responseText);
-        resolve(response);
-        // setCookie(balsamTokenName, response['access_token'],3);
-        // polling=0;
-    }
-    else{
-        reject({
-            status: this.status,
-            statusText: this.statusText,
-            response: this.response,
-        });
+function check_reply(resolve,reject){
+    return () => {
+        // print JSON response
+        if (this.status >= 200 && this.status < 300) {
+            // parse JSON
+            const response = JSON.parse(this.responseText);
+            resolve(response);
+            // setCookie(balsamTokenName, response['access_token'],3);
+            // polling=0;
+        }
+        else{
+            reject({
+                status: this.status,
+                statusText: this.statusText,
+                response: this.response,
+            });
+        }
     }
 }
 
 function check_for_token() {
     return new Promise( function(resolve,reject){
         var xmlhttp = new XMLHttpRequest();   // new HttpRequest instance 
-        xmlhttp.onload = check_reply;
+        xmlhttp.onload = check_reply(resolve,reject);
         data = "grant_type=urn:ietf:params:oauth:grant-type:device_code&device_code="+device_code+"&client_id="+String(client_id);
 
         var theUrl = "/auth/device/token";
