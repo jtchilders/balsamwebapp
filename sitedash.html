@@ -64,7 +64,7 @@ $(document).ready( function () {
 });
 
 function get_data(){
-    get_jobs(token,{site_id:site_id,last_update_after:default_start_date.toISOString()}).then( function (response){
+    get_jobs(token,{site_id:site_id,last_update_after:default_start_date.toISOString(),ordering:"-last_update"}).then( function (response){
         let jd = response.data;
         jdf = new dfd.DataFrame(jd["results"]);
         let apply_func = (x) => {return JSON.stringify(x);};
