@@ -167,7 +167,7 @@ function onBalsamTokenReaderLoad(event){
 }
 
 function make_get_request(url,token){
-    console.log("make_get_request",url)
+    console.log("make_get_request",url);
     return new Promise(function (resolve,reject) {
         var xhr = new XMLHttpRequest();
         xhr.onload = function() {
@@ -199,7 +199,9 @@ function make_get_request(url,token){
         // console.log(url);
         xhr.open("GET", url);
         xhr.setRequestHeader("Content-Type", "application/json");
+        console.log("make_get_request A token",token);
         xhr.setRequestHeader("Authorization", "Bearer " + token);
+        console.log("make_get_request B token",token);
         xhr.send("");
     });
 }
