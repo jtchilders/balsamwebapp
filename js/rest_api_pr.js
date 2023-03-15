@@ -21,26 +21,35 @@ function generate_uuid() {
 
 
 var polling=1;
-function poll_for_token() {
-
-    var xmlhttp = new XMLHttpRequest();   // new HttpRequest instance 
-    xmlhttp.onload = () => {
-        // print JSON response
-        if (xmlhttp.status >= 200 && xmlhttp.status < 300) {
-            // parse JSON
-            const response = JSON.parse(xmlhttp.responseText);
-            setCookie(balsamTokenName, response['access_token'],3);
-            polling=0;
+function check_for_token() {
+    return new Promise( function(resolve,reject){
+        var xmlhttp = new XMLHttpRequest();   // new HttpRequest instance 
+        xmlhttp.onload = () => {
+            // print JSON response
+            if (xmlhttp.status >= 200 && xmlhttp.status < 300) {
+                // parse JSON
+                const response = JSON.parse(xmlhttp.responseText);
+                resolve(response);
+                // setCookie(balsamTokenName, response['access_token'],3);
+                // polling=0;
+            }
+            else{
+                reject({
+                    status: xmlhttp.status,
+                    statusText: xmlhttp.statusText,
+                    response: xmlhttp.response,
+                });
+            }
         }
-    }
-    data = "grant_type=urn:ietf:params:oauth:grant-type:device_code&device_code="+device_code+"&client_id="+String(client_id);
+        data = "grant_type=urn:ietf:params:oauth:grant-type:device_code&device_code="+device_code+"&client_id="+String(client_id);
 
-    var theUrl = "/auth/device/token";
-    xmlhttp.open("POST", theUrl);
-    xmlhttp.setRequestHeader("Accept", "application/json");
-    xmlhttp.setRequestHeader('Content-type', 'application/x-www-form-urlencoded');
-    xmlhttp.send(data);
-    if(polling) setTimeout(poll_for_token, 5000);
+        var theUrl = "/auth/device/token";
+        xmlhttp.open("POST", theUrl);
+        xmlhttp.setRequestHeader("Accept", "application/json");
+        xmlhttp.setRequestHeader('Content-type', 'application/x-www-form-urlencoded');
+        xmlhttp.send(data);
+        // if(polling) setTimeout(poll_for_token, 5000);
+    });
 }
 
 function send_login_request() {
@@ -84,6 +93,12 @@ function do_login(){
     let pr = send_login_request();
     pr.then(function (response){
         console.log('done send login reqeuest:',response);
+        check_for_token().then(function (response){
+            console.log('checked for token: ',response)
+        }).catch(function (response){
+            console.log('caught after checked for token:',response);
+        });
+
     }).catch(function (response){
         console.log('caught after send login reqeuest:',response);
     });
