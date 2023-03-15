@@ -2,6 +2,8 @@
 const base_url = 'https://balsam-dev.alcf.anl.gov/'
 const balsamTokenName = "balsam_token"
 var token = null
+var client_id;
+var device_code;
 
 function have_token(){
     if(token == null){
@@ -12,6 +14,81 @@ function have_token(){
     }
     return true;
 }
+
+function generate_uuid() {
+    return this.crypto.randomUUID();
+}
+
+
+var polling=1;
+function poll_for_token() {
+
+    var xmlhttp = new XMLHttpRequest();   // new HttpRequest instance 
+    xmlhttp.onload = () => {
+        // print JSON response
+        if (xmlhttp.status >= 200 && xmlhttp.status < 300) {
+            // parse JSON
+            const response = JSON.parse(xmlhttp.responseText)
+                setCookie("access_token", response['access_token'])
+                polling=0;
+        }
+    }
+    data = "grant_type=urn:ietf:params:oauth:grant-type:device_code&device_code="+device_code+"&client_id="+String(client_id)
+
+    var theUrl = "/auth/device/token";
+    xmlhttp.open("POST", theUrl);
+    xmlhttp.setRequestHeader("Accept", "application/json");
+    xmlhttp.setRequestHeader('Content-type', 'application/x-www-form-urlencoded');
+    xmlhttp.send(data)
+    if(polling) setTimeout(poll_for_token, 5000);
+}
+
+function send_login_request() {
+    return new Promise(function (resolve,reject) {
+        console.log("In send_login_request");
+        client_id = generate_uuid();
+        data = "client_id="+String(client_id);
+
+        var xmlhttp = new XMLHttpRequest();   // new HttpRequest instance 
+        xmlhttp.onload = () => {
+            // print JSON response
+            if (xmlhttp.status >= 200 && xmlhttp.status < 300) {
+                // parse JSON
+                const response = JSON.parse(xmlhttp.responseText);
+                console.log("send_login_request onload:",response);
+                device_code = response['device_code'];
+                window.open(response['verification_uri_complete'], "_blank");
+                resolve({
+                    response: xhr.response,
+                    status: xhr.status,
+                    statusText: xhr.statusText,
+                });
+            }
+            else{
+                reject({
+                    status: xhr.status,
+                    statusText: xhr.statusText,
+                    response: xhr.response,
+                });
+            }
+        };
+        var theUrl = "/auth/device/login";
+        xmlhttp.open("POST", theUrl);
+        xmlhttp.setRequestHeader("Accept", "application/json");
+        xmlhttp.setRequestHeader('Content-type', 'application/x-www-form-urlencoded');
+        xmlhttp.send(data);
+    });
+}
+
+function do_login(){
+    let pr = send_login_request();
+    pr.then(function (response){
+        console.log('done send login reqeuest:',response);
+    }).catch(function (response){
+        console.log('caught after send login reqeuest:',response);
+    });
+}
+
 
 function setCookie(cname, cvalue, exdays) {
     const d = new Date();
