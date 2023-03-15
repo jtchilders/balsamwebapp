@@ -43,7 +43,7 @@ function get_token() {
                 if (this.status >= 200 && this.status < 300) {
                     // parse JSON
                     const response = JSON.parse(this.responseText);
-                    console.log("got token",reponse);
+                    console.log("got token",response);
                     resolve(response);
                     // setCookie(balsamTokenName, response['access_token'],3);
                     // polling=0;
@@ -115,7 +115,7 @@ function do_login(){
     send_login_request().then(function (response){
         console.log('done send login reqeuest:',response);
 
-        check_for_token().then(function (response){
+        get_token().then(function (response){
             console.log('checked for token: ',response)
         }).catch(function (response){
             console.log('caught after checked for token:',response);
