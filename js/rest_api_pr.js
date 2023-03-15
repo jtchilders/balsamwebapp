@@ -33,38 +33,44 @@ const wait = function (ms = 1000) {
     });
 };
 
-function check_reply(resolve,reject){
-    return () => {
-        // print JSON response
-        if (this.status >= 200 && this.status < 300) {
-            // parse JSON
-            const response = JSON.parse(this.responseText);
-            resolve(response);
-            // setCookie(balsamTokenName, response['access_token'],3);
-            // polling=0;
-        }
-        else{
-            reject({
-                status: this.status,
-                statusText: this.statusText,
-                response: this.response,
-            });
-        }
-    }
-}
-
-function check_for_token() {
+function get_token() {
     return new Promise( function(resolve,reject){
-        var xmlhttp = new XMLHttpRequest();   // new HttpRequest instance 
-        xmlhttp.onload = check_reply(resolve,reject);
-        data = "grant_type=urn:ietf:params:oauth:grant-type:device_code&device_code="+device_code+"&client_id="+String(client_id);
+        (function check_for_token(){
+            console.log("checking for token");
+            var xmlhttp = new XMLHttpRequest();   // new HttpRequest instance 
+            xmlhttp.onload = () => {
+                // print JSON response
+                if (this.status >= 200 && this.status < 300) {
+                    // parse JSON
+                    const response = JSON.parse(this.responseText);
+                    console.log("got token",reponse);
+                    resolve(response);
+                    // setCookie(balsamTokenName, response['access_token'],3);
+                    // polling=0;
+                }
+                else{
+                    console.log("did not get token",this.responseText);
+                    let rd = JSON.parse(this.responseText);
+                    if(rd["detail"].includes("authorization_pending")){
+                        setTimeout(check_for_token,2000);
+                    }
+                    else{
+                        reject({
+                            status: this.status,
+                            statusText: this.statusText,
+                            response: this.response,
+                        });
+                    }
+                }
+            };
+            data = "grant_type=urn:ietf:params:oauth:grant-type:device_code&device_code="+device_code+"&client_id="+String(client_id);
 
-        var theUrl = "/auth/device/token";
-        xmlhttp.open("POST", theUrl);
-        xmlhttp.setRequestHeader("Accept", "application/json");
-        xmlhttp.setRequestHeader('Content-type', 'application/x-www-form-urlencoded');
-        xmlhttp.send(data);
-        // if(polling) setTimeout(poll_for_token, 5000);
+            var theUrl = "/auth/device/token";
+            xmlhttp.open("POST", theUrl);
+            xmlhttp.setRequestHeader("Accept", "application/json");
+            xmlhttp.setRequestHeader('Content-type', 'application/x-www-form-urlencoded');
+            xmlhttp.send(data);
+        })();
     });
 }
 
@@ -106,22 +112,13 @@ function send_login_request() {
 }
 
 function do_login(){
-    let pr = send_login_request();
-    pr.then(function (response){
+    send_login_request().then(function (response){
         console.log('done send login reqeuest:',response);
 
-
-        
         check_for_token().then(function (response){
             console.log('checked for token: ',response)
         }).catch(function (response){
-            let rd = JSON.parse(reponse.reponse);
-            if(rd["detail"].includes("authorization_pending")){
-                check_for_token
-            }
-            else{
-                console.log('caught after checked for token:',response);
-            }
+            console.log('caught after checked for token:',response);
         });
 
     }).catch(function (response){
