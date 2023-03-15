@@ -6,7 +6,7 @@
     <script type="text/javascript" src="https://code.jquery.com/jquery-3.5.1.js"></script>
     <script type="text/javascript" src="https://cdn.datatables.net/1.13.2/js/jquery.dataTables.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/danfojs@1.1.2/lib/bundle.min.js"></script>
-    <script src="/static/balsamwebapp/js/rest_api_pr.js?v=14"></script>
+    <script src="/static/balsamwebapp/js/rest_api_pr.js?v=15"></script>
     
     <script>
 var sites_data = null;
@@ -19,7 +19,7 @@ $(document).ready(function() {
     }
     else{
         //  no cookie found so need to setup form to get token from file.
-        do_login();
+        do_login().then(create_sites_table()).catch(console.log("do login failed"));
 
         // let tokenform = document.createElement("form");
         // tokenform.id = "config_file_form";
