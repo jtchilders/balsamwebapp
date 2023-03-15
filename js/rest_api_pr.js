@@ -226,8 +226,8 @@ function create_custom_url(path,kwargs){
 
 function get_sites(token,
     {
-        limit=10,
-        offset=0,
+        limit=null,
+        offset=null,
         name=null,
         path=null,
         id=null, // one or array
@@ -248,8 +248,8 @@ function get_sites(token,
 
 function get_apps(token,
     {
-        limit=10,
-        offset=0,
+        limit=null,
+        offset=null,
         id=null, // one or array
         name=null,
         site_id=null, // one or array
@@ -274,7 +274,7 @@ function get_apps(token,
 
 function get_jobs(token,
     {
-        limit=10,
+        limit=1000,
         offset=0,
         id=null, // one or array
         parent_id=null, // one or array
@@ -316,7 +316,7 @@ function get_jobs(token,
 
 function get_batch_jobs(token,
     {
-        limit=10,
+        limit=1000,
         offset=0,
         id=null, // one or array
         site_id=null, // one or array
@@ -353,7 +353,7 @@ function get_batch_jobs(token,
 
 function get_events(token,
     {
-        limit=10,
+        limit=1000,
         offset=0,
         id=null, // one or array
         job_id=null, // one or array
