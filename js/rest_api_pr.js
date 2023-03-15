@@ -39,15 +39,12 @@ function get_token() {
             console.log("checking for token");
             var xmlhttp = new XMLHttpRequest();   // new HttpRequest instance 
             xmlhttp.onload = function() {
-                // print JSON response
-                    console.log("got token onload",this);
+                // check if reply included a token, if not, restart
                 if (this.status >= 200 && this.status < 300) {
                     // parse JSON
                     const response = JSON.parse(this.responseText);
                     console.log("got token",response);
                     resolve(response);
-                    // setCookie(balsamTokenName, response['access_token'],3);
-                    // polling=0;
                 }
                 else{
                     console.log("did not get token",this);
@@ -117,7 +114,8 @@ function do_login(){
         console.log('done send login reqeuest:',response);
 
         get_token().then(function (response){
-            console.log('checked for token: ',response)
+            console.log('checked for token: ',response);
+            setCookie(balsamTokenName, response['access_token'],3);
         }).catch(function (response){
             console.log('caught after checked for token:',response);
         });
