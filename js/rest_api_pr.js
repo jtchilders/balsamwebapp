@@ -103,6 +103,7 @@ function do_login(){
             get_token().then(function (response){
                 console.log('checked for token: ',response);
                 setCookie(balsamTokenName, response['access_token'],3);
+                token = response['access_token'];
                 resolve(true);
             }).catch(function (response){
                 console.log('caught after checked for token:',response);
