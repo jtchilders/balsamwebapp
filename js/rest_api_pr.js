@@ -167,15 +167,18 @@ function onBalsamTokenReaderLoad(event){
 }
 
 function make_get_request(url,token){
+    console.log("make_get_request",url)
     return new Promise(function (resolve,reject) {
         var xhr = new XMLHttpRequest();
         xhr.onload = function() {
             if (xhr.status >= 200 && xhr.status < 300) {
+                console.log("make_get_request onload good",xhr.response)
               resolve({
                 data: JSON.parse(xhr.response),
                 url: url
               });
             } else {
+                console.log("make_get_request onload bad",xhr.response)
                 let reply = JSON.parse(xhr.response);
                 if(reply["detail"].includes("Could not validate credentials")){
                     alert("credentials are probably expired. Login again and delete the cookie for this page.")
