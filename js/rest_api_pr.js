@@ -18,29 +18,43 @@ function have_token(){
 function generate_uuid() {
     return this.crypto.randomUUID();
 }
+const poll = async function (fn, fnCondition, ms) {
+    let result = await fn();
+    while (fnCondition(result)) {
+        await wait(ms);
+        result = await fn();
+    }
+    return result;
+};
 
+const wait = function (ms = 1000) {
+    return new Promise(resolve => {
+        setTimeout(resolve, ms);
+    });
+};
 
-var polling=1;
+function check_reply(){
+    // print JSON response
+    if (this.status >= 200 && this.status < 300) {
+        // parse JSON
+        const response = JSON.parse(this.responseText);
+        resolve(response);
+        // setCookie(balsamTokenName, response['access_token'],3);
+        // polling=0;
+    }
+    else{
+        reject({
+            status: this.status,
+            statusText: this.statusText,
+            response: this.response,
+        });
+    }
+}
+
 function check_for_token() {
     return new Promise( function(resolve,reject){
         var xmlhttp = new XMLHttpRequest();   // new HttpRequest instance 
-        xmlhttp.onload = () => {
-            // print JSON response
-            if (xmlhttp.status >= 200 && xmlhttp.status < 300) {
-                // parse JSON
-                const response = JSON.parse(xmlhttp.responseText);
-                resolve(response);
-                // setCookie(balsamTokenName, response['access_token'],3);
-                // polling=0;
-            }
-            else{
-                reject({
-                    status: xmlhttp.status,
-                    statusText: xmlhttp.statusText,
-                    response: xmlhttp.response,
-                });
-            }
-        }
+        xmlhttp.onload = check_reply;
         data = "grant_type=urn:ietf:params:oauth:grant-type:device_code&device_code="+device_code+"&client_id="+String(client_id);
 
         var theUrl = "/auth/device/token";
@@ -99,7 +113,13 @@ function do_login(){
         check_for_token().then(function (response){
             console.log('checked for token: ',response)
         }).catch(function (response){
-            console.log('caught after checked for token:',response);
+            let rd = JSON.parse(reponse.reponse);
+            if(rd["detail"].includes("authorization_pending")){
+                check_for_token
+            }
+            else{
+                console.log('caught after checked for token:',response);
+            }
         });
 
     }).catch(function (response){
