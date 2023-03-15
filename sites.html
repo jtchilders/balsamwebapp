@@ -6,7 +6,7 @@
     <script type="text/javascript" src="https://code.jquery.com/jquery-3.5.1.js"></script>
     <script type="text/javascript" src="https://cdn.datatables.net/1.13.2/js/jquery.dataTables.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/danfojs@1.1.2/lib/bundle.min.js"></script>
-    <script src="/static/balsamwebapp/js/rest_api_pr.js?v=19"></script>
+    <script src="/static/balsamwebapp/js/rest_api_pr.js?v=20"></script>
     
     <script>
 var sites_data = null;
@@ -200,7 +200,7 @@ function fill_table(){
             }
             // add link to name td
             const link = document.createElement("a");
-            link.setAttribute("href", '/balsam/sitedash/?site_id=' + idLookup[data.name]);
+            link.setAttribute("href", '/static/balsamwebapp/sitedash/?site_id=' + idLookup[data.name]);
             link.textContent = data.name;
             row.getElementsByTagName('td')[0].textContent = "";
             row.getElementsByTagName('td')[0].appendChild(link);

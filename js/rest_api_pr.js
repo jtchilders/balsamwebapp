@@ -22,18 +22,18 @@ function generate_uuid() {
 function get_token() {
     return new Promise( function(resolve,reject){
         (function check_for_token(){
-            console.log("checking for token");
+            // console.log("checking for token");
             var xmlhttp = new XMLHttpRequest();   // new HttpRequest instance 
             xmlhttp.onload = function() {
                 // check if reply included a token, if not, restart
                 if (this.status >= 200 && this.status < 300) {
                     // parse JSON
                     const response = JSON.parse(this.responseText);
-                    console.log("got token",response);
+                    // console.log("got token",response);
                     resolve(response);
                 }
                 else{
-                    console.log("did not get token",this);
+                    // console.log("did not get token",this);
                     let rd = JSON.parse(this.responseText);
                     if(rd["detail"].includes("authorization_pending")){
                         setTimeout(check_for_token,2000);
@@ -60,7 +60,7 @@ function get_token() {
 
 function send_login_request() {
     return new Promise(function (resolve,reject) {
-        console.log("In send_login_request");
+        // console.log("In send_login_request");
         client_id = generate_uuid();
         data = "client_id="+String(client_id);
 
@@ -98,20 +98,20 @@ function send_login_request() {
 function do_login(){
     return new Promise( function (resolve,reject){
         send_login_request().then(function (response){
-            console.log('done send login reqeuest:',response);
+            // console.log('done send login reqeuest:',response);
 
             get_token().then(function (response){
-                console.log('checked for token: ',response);
+                // console.log('checked for token: ',response);
                 setCookie(balsamTokenName, response['access_token'],3);
                 token = response['access_token'];
                 resolve(true);
             }).catch(function (response){
-                console.log('caught after checked for token:',response);
+                // console.log('caught after checked for token:',response);
                 reject(false);
             });
 
         }).catch(function (response){
-            console.log('caught after send login reqeuest:',response);
+            // console.log('caught after send login reqeuest:',response);
             reject(false);
         });
     });
@@ -168,18 +168,15 @@ function onBalsamTokenReaderLoad(event){
 }
 
 function make_get_request(url,token){
-    console.log("make_get_request",url);
     return new Promise(function (resolve,reject) {
         var xhr = new XMLHttpRequest();
         xhr.onload = function() {
             if (xhr.status >= 200 && xhr.status < 300) {
-                console.log("make_get_request onload good",xhr.response)
               resolve({
                 data: JSON.parse(xhr.response),
                 url: url
               });
             } else {
-                console.log("make_get_request onload bad",xhr.response)
                 let reply = JSON.parse(xhr.response);
                 if(reply["detail"].includes("Could not validate credentials")){
                     alert("credentials are probably expired. Login again and delete the cookie for this page.")
@@ -200,9 +197,7 @@ function make_get_request(url,token){
         // console.log(url);
         xhr.open("GET", url);
         xhr.setRequestHeader("Content-Type", "application/json");
-        console.log("make_get_request A token",token);
         xhr.setRequestHeader("Authorization", "Bearer " + token);
-        console.log("make_get_request B token",token);
         xhr.send("");
     });
 }
