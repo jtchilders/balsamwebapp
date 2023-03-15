@@ -40,6 +40,7 @@ function get_token() {
             var xmlhttp = new XMLHttpRequest();   // new HttpRequest instance 
             xmlhttp.onload = () => {
                 // print JSON response
+                    console.log("got token onload",this);
                 if (this.status >= 200 && this.status < 300) {
                     // parse JSON
                     const response = JSON.parse(this.responseText);
@@ -49,7 +50,7 @@ function get_token() {
                     // polling=0;
                 }
                 else{
-                    console.log("did not get token",this.responseText);
+                    console.log("did not get token",this);
                     let rd = JSON.parse(this.responseText);
                     if(rd["detail"].includes("authorization_pending")){
                         setTimeout(check_for_token,2000);
