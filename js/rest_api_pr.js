@@ -59,16 +59,16 @@ function send_login_request() {
                 device_code = response['device_code'];
                 window.open(response['verification_uri_complete'], "_blank");
                 resolve({
-                    response: xhr.response,
-                    status: xhr.status,
-                    statusText: xhr.statusText,
+                    response: xmlhttp.response,
+                    status: xmlhttp.status,
+                    statusText: xmlhttp.statusText,
                 });
             }
             else{
                 reject({
-                    status: xhr.status,
-                    statusText: xhr.statusText,
-                    response: xhr.response,
+                    status: xmlhttp.status,
+                    statusText: xmlhttp.statusText,
+                    response: xmlhttp.response,
                 });
             }
         };
