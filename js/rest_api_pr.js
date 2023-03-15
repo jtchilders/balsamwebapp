@@ -38,7 +38,7 @@ function get_token() {
         (function check_for_token(){
             console.log("checking for token");
             var xmlhttp = new XMLHttpRequest();   // new HttpRequest instance 
-            xmlhttp.onload = () => {
+            xmlhttp.onload = function() {
                 // print JSON response
                     console.log("got token onload",this);
                 if (this.status >= 200 && this.status < 300) {
