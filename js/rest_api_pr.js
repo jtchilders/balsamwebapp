@@ -93,6 +93,9 @@ function do_login(){
     let pr = send_login_request();
     pr.then(function (response){
         console.log('done send login reqeuest:',response);
+
+
+        
         check_for_token().then(function (response){
             console.log('checked for token: ',response)
         }).catch(function (response){
@@ -132,7 +135,7 @@ function checkBalsamToken() {
     if (local_token != "") {
         token = local_token;
     } else {
-        console.log("no token found, enabled file browser");
+        console.log("no token found");
     }
 }
 
