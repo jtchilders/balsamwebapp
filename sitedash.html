@@ -20,6 +20,8 @@ const site_id = urlParams.get('site_id');
 var jdf = null;
 var evdf = null;
 var sites_data = null;
+var barchart = null;
+var jobtable = null;
 var default_start_date = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 var default_end_date = new Date();
 $(document).ready( function () {
@@ -38,33 +40,138 @@ $(document).ready( function () {
         });
     }
 
-    get_sites(token,{id:site_id}).then(function (response){
-        let sd = response.data["results"][0];
-        let last_refresh = new Date(Date.parse(sd["last_refresh"]));
-        let current_time = new Date();
-        let diff = (current_time - last_refresh ) * 1e-3 / 60;
-        let days = diff / 60 / 24;
-        $("#site_name").each(function(){
-            $(this).text(sd["name"]);
-        });
-        $("#site_status").each(function(){
-            if(days > 1){
-                $(this).css('background-color','white');
-                $(this).css('color','red');
-                $(this).text("OFFLINE");
-            }
-            else{
-                $(this).css('background-color','white');
-                $(this).css('color','green');
-                $(this).text("ONLINE");
-            }
-        });
-    });
-
     document.getElementById('end_time').value = default_end_date.toISOString().slice(0,16);
     document.getElementById('start_time').value = default_start_date.toISOString().slice(0,16);
 
 });
+
+
+function package_jobs(response){
+    let jd = response.data;
+    if(jd["count"] > 0){
+        jdf = new dfd.DataFrame(jd["results"]);
+        let apply_func = function (x){return String(x);};
+        let nt = jdf["tags"].apply(apply_func);
+        jdf.addColumn("tagstr", nt.values,{ inplace:true});
+        return jdf;
+    }
+    else{
+        alert("date range returned 0 jobs");
+    }
+    return null;
+}
+
+function update_jobs_table(jdf){
+    let table_jdf = jdf.loc({columns:["id","app_id","batch_job_id","tagstr","state"]});
+
+    if(jobtable == null){
+        jobtable = $('#jobdata').DataTable({
+            data: table_jdf.values,
+            paging: false,
+            ordering: true,
+            info: false,
+        });
+    }
+    else{
+        jobtable.clear().draw();
+        jobtable.rows.add(table_jdf.values).draw();
+    }
+    return table_jdf;
+}
+
+function update_job_barchart(table_jdf){
+    // adding chartjs
+    const chart_canvas = document.getElementById('state_timeline');
+    let grp = table_jdf.groupby(["state"]);
+    let running = 0;
+    if("RUNNING" in grp.colDict){
+        running = grp.colDict["RUNNING"].state.length;
+    }
+    let done = 0;
+    if("JOB_FINISHED" in grp.colDict){
+        done = grp.colDict["JOB_FINISHED"].state.length;
+    }
+    let ready = 0;
+    for(const st of ['CREATED',
+                    'AWAITING_PARENTS',
+                    'READY',
+                    'STAGED_IN',
+                    'PREPROCESSED',
+                    'RESTART_READY']){
+        if(st in grp.colDict){
+            ready = ready + grp.colDict[st].state.length;
+        }
+    }
+    let failed = 0;
+    for(const st of [
+                    'RUN_ERROR',
+                    'RUN_TIMEOUT',
+                    'FAILED',]){
+        if(st in grp.colDict){
+            failed = failed + grp.colDict[st].state.length;
+        }
+    }
+
+    var data = {
+            data: [ready,running,done,failed],
+            backgroundColor: [
+            'rgba(255, 99, 132, 0.2)',
+            'rgba(255, 159, 64, 0.2)',
+            'rgba(255, 205, 86, 0.2)',
+            'rgba(75, 192, 192, 0.2)',
+            'rgba(54, 162, 235, 0.2)',
+            'rgba(153, 102, 255, 0.2)',
+            'rgba(201, 203, 207, 0.2)'
+            ],
+            borderColor: [
+            'rgb(255, 99, 132)',
+            'rgb(255, 159, 64)',
+            'rgb(255, 205, 86)',
+            'rgb(75, 192, 192)',
+            'rgb(54, 162, 235)',
+            'rgb(153, 102, 255)',
+            'rgb(201, 203, 207)'
+            ],
+            borderWidth: 1
+        };
+    var datasets = {
+        labels: ["ready","running","finished","failed"],
+        datasets: [data],
+    };
+    
+    var chartOptions = {
+        layout: {
+            padding: 20
+        },
+        animations: {
+            tension: {
+                duration: 10000,
+                easing: 'linear',
+                from: 1,
+                to: 0,
+                loop: true
+            }
+        },
+        zoom: {
+            enabled: true,
+            mode: 'x',
+        },
+        plugins: {
+            legend: {
+                display: false
+            }
+        }
+    };
+    
+    if(barchart != null){
+        barchart.destroy();
+    }
+    barchart = new Chart(chart_canvas, {
+        type: 'bar',
+        data: datasets,
+        options: chartOptions
+    });
+}
 
 function get_data(){
     get_sites(token).then(function (response){
@@ -74,111 +181,27 @@ function get_data(){
     })
 
     get_jobs(token,{site_id:site_id,last_update_after:default_start_date.toISOString(),ordering:"-last_update"}).then( function (response){
-        let jd = response.data;
-        jdf = new dfd.DataFrame(jd["results"]);
-        let apply_func = (x) => {return JSON.stringify(x);};
-        let nt = jdf["tags"].apply(apply_func);
-        jdf.addColumn("tagstr", nt.values,{ inplace:true});
-
-        let table_jdf = jdf.loc({columns:["id","app_id","batch_job_id","tagstr","state"]});
-
-        $('#jobdata').DataTable({
-            data: table_jdf.values,
-            paging: false,
-            ordering: true,
-            info: false,
-        });
-
-
-        // adding chartjs
-        const chart_canvas = document.getElementById('state_timeline');
-
-        let grp = table_jdf.groupby(["state"]);
-
-        let running = 0;
-        if("RUNNING" in grp.colDict){
-            running = grp.colDict["RUNNING"].state.length;
+        let jdf = package_jobs(response);
+        if(jdf != null){
+            let table_jdf = update_jobs_table(jdf);
+            update_job_barchart(table_jdf);
         }
-        let done = 0;
-        if("JOB_FINISHED" in grp.colDict){
-            done = grp.colDict["JOB_FINISHED"].state.length;
-        }
-        let ready = 0;
-        for(const st of ['CREATED',
-                        'AWAITING_PARENTS',
-                        'READY',
-                        'STAGED_IN',
-                        'PREPROCESSED',
-                        'RESTART_READY']){
-            if(st in grp.colDict){
-                ready = ready + grp.colDict[st].state.length;
-            }
-        }
-        let failed = 0;
-        for(const st of [
-                        'RUN_ERROR',
-                        'RUN_TIMEOUT',
-                        'FAILED',]){
-            if(st in grp.colDict){
-                failed = failed + grp.colDict[st].state.length;
-            }
-        }
+    });
 
-        var data = {
-                data: [ready,running,done,failed],
-                backgroundColor: [
-                'rgba(255, 99, 132, 0.2)',
-                'rgba(255, 159, 64, 0.2)',
-                'rgba(255, 205, 86, 0.2)',
-                'rgba(75, 192, 192, 0.2)',
-                'rgba(54, 162, 235, 0.2)',
-                'rgba(153, 102, 255, 0.2)',
-                'rgba(201, 203, 207, 0.2)'
-                ],
-                borderColor: [
-                'rgb(255, 99, 132)',
-                'rgb(255, 159, 64)',
-                'rgb(255, 205, 86)',
-                'rgb(75, 192, 192)',
-                'rgb(54, 162, 235)',
-                'rgb(153, 102, 255)',
-                'rgb(201, 203, 207)'
-                ],
-                borderWidth: 1
-            };
-        var datasets = {
-            labels: ["ready","running","finished","failed"],
-            datasets: [data],
-        };
+
+    jQuery('#update_plot').click(function(){
+        let start_time = document.getElementById('start_time').value;
+        let end_time = document.getElementById('end_time').value;
+        console.log('in button click',start_time,end_time);
         
-        var chartOptions = {
-            layout: {
-                padding: 20
-            },
-            animations: {
-                tension: {
-                    duration: 10000,
-                    easing: 'linear',
-                    from: 1,
-                    to: 0,
-                    loop: true
-                }
-            },
-            zoom: {
-                enabled: true,
-                mode: 'x',
-            },
-            plugins: {
-                legend: {
-                    display: false
-                }
-            }
-        };
+        get_jobs(token,{site_id:site_id,last_update_after:start_time,last_update_before:end_time}).then(function (response){
+            console.log('updating plot',response);
+            let jdf = package_jobs(response);
 
-        var chart = new Chart(chart_canvas, {
-            type: 'bar',
-            data: datasets,
-            options: chartOptions
+            if(jdf != null){
+                let table_jdf = update_jobs_table(jdf);
+                update_job_barchart(table_jdf);
+            }
         });
         
     });
@@ -201,74 +224,31 @@ function fill_sites_menu(){
 
         li.appendChild(link);
         sitemenu.appendChild(li);
+
+        // update the title for status
+        if(result["id"] == site_id){
+            let last_refresh = new Date(Date.parse(result["last_refresh"]));
+            let current_time = new Date();
+            let diff = (current_time - last_refresh ) * 1e-3 / 60;
+            let days = diff / 60 / 24;
+            $("#site_name").each(function(){
+                $(this).text(result["name"]);
+            });
+            $("#site_status").each(function(){
+                if(days > 1){
+                    $(this).css('background-color','white');
+                    $(this).css('color','red');
+                    $(this).text("OFFLINE");
+                }
+                else{
+                    $(this).css('background-color','white');
+                    $(this).css('color','green');
+                    $(this).text("ONLINE");
+                }
+            });
+        }
     }
 }
-
-//     var running = {
-//         label: "RUNNING",
-//         data: {{ RUNNING|safe }},
-//         lineTension: 0,
-//         fill: false,
-//         borderColor: 'blue'
-//     };
-
-//     var queued = {
-//         label: "READY",
-//         data: {{ READY|safe }},
-//         lineTension: 0,
-//         fill: false,
-//         borderColor: 'violet'
-//     };
-
-//     var failed = {
-//         label: "FAILED",
-//         data: {{ FAILED|safe }},
-//         lineTension: 0,
-//         fill: false,
-//         borderColor: 'red'
-//     };
-
-//     var job_finished = {
-//         label: "JOB_FINISHED",
-//         data: {{ JOB_FINISHED|safe }},
-//         lineTension: 0,
-//         fill: false,
-//         borderColor: 'green'
-//     };
-
-
-//     var combo_data = {
-//     labels: {{ xlabels|safe }},
-//     datasets: [queued, failed, job_finished, running]
-//     };
-
-//     var chartOptions = {
-//         layout: {
-//             padding: 20
-//         },
-//         legend: {
-//             display: true,
-//             position: 'top',
-//             labels: {
-//             boxWidth: 80,
-//             fontColor: 'black'
-//             },
-//         },
-//         animations: {
-//             tension: {
-//                 duration: 10000,
-//                 easing: 'linear',
-//                 from: 1,
-//                 to: 0,
-//                 loop: true
-//             }
-//         },
-//         zoom: {
-//             enabled: true,
-//             mode: 'x',
-//         }
-//     };
-
 
 //     var chart = new Chart(chart_canvas, {
 //         type: 'line',
@@ -276,13 +256,6 @@ function fill_sites_menu(){
 //         options: chartOptions
 //     });
 
-//     jQuery('#update_plot').click(
-//         function(){
-//             send_data = {
-//                 'start_time': document.getElementById('start_time').value,
-//                 'end_time': document.getElementById('end_time').value,
-//                 'nbins': document.getElementById('nbins').value
-//             }
 
 //             jQuery.getJSON('/balsam/select_date_range/', send_data, function(data, status){
 
@@ -332,9 +305,8 @@ function fill_sites_menu(){
 //                 document.getElementById('update_msg').textContent = data.msg
                 
 //             });
-            
-//         });
-// } );
+      
+
 
 document.addEventListener("DOMContentLoaded", function(){
     // make it as accordion for smaller screens
@@ -412,9 +384,7 @@ document.addEventListener("DOMContentLoaded", function(){
 <!-- <img src="{% static 'balsamwebapp/state_timeline.png' %}" alt="My image"> -->
 
 Showing time range: <input type="datetime-local" id="start_time" name="start-time"> - to -
-<input type="datetime-local" id="end_time" name="end-time"> - with 
-<input type="number" id="nbins" name="nbins"
-       min="10" max="200" value="100"> bins  <input type="submit" id="update_plot" value="Update" />
+<input type="datetime-local" id="end_time" name="end-time">  <input type="submit" id="update_plot" value="Update" />
 <span id="update_msg"></span>
 
 <div>
