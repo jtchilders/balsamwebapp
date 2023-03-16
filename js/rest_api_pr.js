@@ -1,5 +1,5 @@
 
-const base_url = 'https://balsam-dev.alcf.anl.gov/'
+const base_url = 'https://balsam-dev.alcf.anl.gov'
 const balsamTokenName = "balsam_token"
 var token = null
 var client_id;
@@ -49,7 +49,7 @@ function get_token() {
             };
             data = "grant_type=urn:ietf:params:oauth:grant-type:device_code&device_code="+device_code+"&client_id="+String(client_id);
 
-            var theUrl = "/auth/device/token";
+            var theUrl = base_url + "/auth/device/token";
             xmlhttp.open("POST", theUrl);
             xmlhttp.setRequestHeader("Accept", "application/json");
             xmlhttp.setRequestHeader('Content-type', 'application/x-www-form-urlencoded');
@@ -87,7 +87,7 @@ function send_login_request() {
                 });
             }
         };
-        var theUrl = "/auth/device/login";
+        var theUrl = base_url + "/auth/device/login";
         xmlhttp.open("POST", theUrl);
         xmlhttp.setRequestHeader("Accept", "application/json");
         xmlhttp.setRequestHeader('Content-type', 'application/x-www-form-urlencoded');
@@ -203,7 +203,14 @@ function make_get_request(url,token){
 }
 
 function create_custom_url(path,kwargs){
-    let url = base_url + path + '/?'
+    let url = base_url;
+    if(path.startsWith('/')){
+        url = url + path;
+    }
+    else{
+        url = url + '/' + path;
+    }
+    url = url + '/?';
     for(let key in kwargs){
         let value = kwargs[key]
         // console.log("kwargs:",key," = ",value);
