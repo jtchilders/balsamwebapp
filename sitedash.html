@@ -71,7 +71,7 @@ function get_data(){
         let nt = jdf["tags"].apply(apply_func);
         jdf.addColumn("tagstr", nt.values,{ inplace:true});
 
-        let table_jdf = jdf.loc({columns:["id","app_id","batch_job_id","tagstr","state"]})
+        let table_jdf = jdf.loc({columns:["id","app_id","batch_job_id","tagstr","state"]});
 
         $('#jobdata').DataTable({
             data: table_jdf.values,
