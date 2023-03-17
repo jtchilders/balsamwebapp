@@ -9,6 +9,7 @@
     <script src="https://cdn.jsdelivr.net/npm/danfojs@1.1.2/lib/bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="js/rest_api_pr.js"></script>
+    <script src="js/menu_helpers.js"></script>
     <script type="text/javascript">
 
 const queryString = window.location.search;
@@ -81,7 +82,7 @@ function update_jobs_table(jdf){
 
 function update_job_barchart(table_jdf){
     // adding chartjs
-    const chart_canvas = document.getElementById('state_timeline');
+    const chart_canvas = document.getElementById('state_barchart');
     let grp = table_jdf.groupby(["state"]);
     let running = 0;
     if("RUNNING" in grp.colDict){
@@ -173,6 +174,138 @@ function update_job_barchart(table_jdf){
     });
 }
 
+var runbar = null;
+function make_timeline(evt_to,evt_from,jdf,chart_canvas){
+    let start_time = new Date(document.getElementById('start_time').value);
+    let end_time = new Date(document.getElementById('end_time').value);
+    let nbins = Number(document.getElementById('nbins').value);
+    
+    let total_time_ms = (end_time - start_time);
+    let bin_time_ms = total_time_ms / nbins;
+    let bin_time_min = bin_time_ms / 1000 / 60;
+    
+    let bin_center = Array(nbins);
+    let bin_evt_to = Array(nbins);
+    let bin_evt_from = Array(nbins);
+    bin_evt_to[0] = 0;
+    bin_evt_from[0] = 0;
+    for(let i=0;i<nbins;i++){
+        let bin_start = new Date(start_time);
+        bin_start.setMinutes(start_time.getMinutes() + (i*bin_time_min));
+        let bin_end = new Date(start_time);
+        bin_end.setMinutes(start_time.getMinutes() + ((i+1)*bin_time_min));
+        let center = new Date(start_time);
+        center.setMinutes(start_time.getMinutes() + bin_time_min*(i+0.5));
+        bin_center[i] = center;
+        for(const evt of evt_to["results"]){
+            let ts = new Date(evt["timestamp"]);
+            if(bin_start < ts && ts < bin_end){
+                bin_evt_to[i] += 1;
+            }
+        }
+        for(const evt of evt_from["results"]){
+            let ts = new Date(evt["timestamp"]);
+            if(bin_start < ts && ts < bin_end){
+                bin_evt_from[i] += 1;
+            }
+        }
+
+        if(i<(nbins-1)){
+            bin_evt_to[i+1] = bin_evt_to[i];
+            bin_evt_from[i+1] = bin_evt_from[i];
+        }
+    }
+    console.log('bin_evt_to',bin_evt_to);
+    console.log('bin_evt_from',bin_evt_from);
+
+    let bin_running = Array(nbins);
+    bin_running[0] = 0;
+    for(let i=1;i<nbins;i++){
+        bin_running[i] = bin_evt_to[i] - bin_evt_from[i-1];
+    }
+    console.log('bin_running',bin_running);
+
+    xlabels = [];
+    for(let i=0;i<nbins;i++){
+        let x = bin_center[i];
+        xlabels.push(x.getMonth()+"-"+x.getDate()+" "+x.getHours()+":"+x.getMinutes());
+    }
+
+    var data = {
+            label: "RUNNING",
+            data: bin_running,
+            borderWidth: 1
+        };
+    var datasets = {
+        labels: xlabels,
+        datasets: [data],
+    };
+    
+    var chartOptions = {
+        layout: {
+            padding: 20
+        },
+        animations: {
+            tension: {
+                duration: 10000,
+                easing: 'linear',
+                from: 1,
+                to: 0,
+                loop: true
+            }
+        },
+        zoom: {
+            enabled: true,
+            mode: 'x',
+        },
+        plugins: {
+            legend: {
+                display: true,
+
+            }
+        }
+    };
+    
+    if(runbar != null){
+        runbar.destroy();
+    }
+    runbar = new Chart(chart_canvas, {
+        type: 'bar',
+        data: datasets,
+        options: chartOptions
+    });
+}
+
+function update_timeline(jdf){
+    const chart_canvas = document.getElementById('state_timeline');
+    var evt_to = null;
+    var evt_from = null;
+    if(jdf != null){
+        get_events(token,{job_id:jdf["id"].values,to_state:"RUNNING"}).then(function (response) {
+            console.log("counts",response.data["count"]);
+            evt_to = response.data;
+            get_events(token,{job_id:jdf["id"].values,from_state:"RUNNING"}).then(function (response) {
+                console.log("counts",response.data["count"]);
+                evt_from = response.data;
+                make_timeline(evt_to,evt_from,jdf,chart_canvas);
+            });
+        });
+    }
+}
+
+function update_all(last_update_after,last_update_before){
+    var jdf = null;
+    get_jobs(token,{site_id:site_id,last_update_after:last_update_after,last_update_before:last_update_before,ordering:"-last_update"}).then( function (response){
+        jdf = package_jobs(response);
+        if(jdf != null){
+            let table_jdf = update_jobs_table(jdf);
+            update_job_barchart(table_jdf);
+        }
+    }).then(function (){
+        update_timeline(jdf);
+    });
+}
+
 function get_data(){
     get_sites(token).then(function (response){
         // console.log(response.url);
@@ -180,13 +313,7 @@ function get_data(){
         fill_sites_menu();
     })
 
-    get_jobs(token,{site_id:site_id,last_update_after:default_start_date.toISOString(),ordering:"-last_update"}).then( function (response){
-        let jdf = package_jobs(response);
-        if(jdf != null){
-            let table_jdf = update_jobs_table(jdf);
-            update_job_barchart(table_jdf);
-        }
-    });
+    update_all(default_start_date.toISOString(),null);
 
 
     jQuery('#update_plot').click(function(){
@@ -194,32 +321,23 @@ function get_data(){
         let end_time = document.getElementById('end_time').value;
         console.log('in button click',start_time,end_time);
         
-        get_jobs(token,{site_id:site_id,last_update_after:start_time,last_update_before:end_time}).then(function (response){
-            console.log('updating plot',response);
-            let jdf = package_jobs(response);
-
-            if(jdf != null){
-                let table_jdf = update_jobs_table(jdf);
-                update_job_barchart(table_jdf);
-            }
-        });
-        
+        update_all(start_time,end_time);
     });
-
 }
- 
+
+
 function fill_sites_menu(){
     let sitemenu = document.getElementById("sitedash-dropdown");
     
     for(let i = 0;i < sites_data["results"].length; i++){
         result = sites_data["results"][i];
-        let site_id = result["id"];
-        let site_name = result["name"];
+        let local_site_id = result["id"];
+        let local_site_name = result["name"];
 
         let li = document.createElement("li");
         let link = document.createElement("a");
-        link.setAttribute("href", '/static/balsamwebapp/sitedash.html?site_id=' + site_id);
-        link.textContent = site_name;
+        link.setAttribute("href", '/static/balsamwebapp/sitedash.html?site_id=' + local_site_id);
+        link.textContent = local_site_name;
         link.classList.add("dropdown-item");
 
         li.appendChild(link);
@@ -250,97 +368,6 @@ function fill_sites_menu(){
     }
 }
 
-//     var chart = new Chart(chart_canvas, {
-//         type: 'line',
-//         data: combo_data,
-//         options: chartOptions
-//     });
-
-
-//             jQuery.getJSON('/balsam/select_date_range/', send_data, function(data, status){
-
-//                 if (data.update){
-//                     var running = {
-//                         label: "RUNNING",
-//                         data: data.RUNNING,
-//                         lineTension: 0,
-//                         fill: false,
-//                         borderColor: 'blue'
-//                     };
-
-//                     var queued = {
-//                         label: "READY",
-//                         data: data.READY,
-//                         lineTension: 0,
-//                         fill: false,
-//                         borderColor: 'violet'
-//                     };
-
-//                     var failed = {
-//                         label: "FAILED",
-//                         data: data.FAILED,
-//                         lineTension: 0,
-//                         fill: false,
-//                         borderColor: 'red'
-//                     };
-
-//                     var job_finished = {
-//                         label: "JOB_FINISHED",
-//                         data: data.JOB_FINISHED,
-//                         lineTension: 0,
-//                         fill: false,
-//                         borderColor: 'green'
-//                     };
-//                     var combo_data = {
-//                         labels: data.xlabels,
-//                         datasets: [queued, failed, job_finished, running]
-//                     };
-
-                    
-//                     chart.data.labels = data.xlabels;
-//                     chart.data.datasets = combo_data.datasets;
-//                     chart.update();
-//                 }
-
-//                 document.getElementById('update_msg').textContent = data.msg
-                
-//             });
-      
-
-
-document.addEventListener("DOMContentLoaded", function(){
-    // make it as accordion for smaller screens
-    if (window.innerWidth > 992) {
-
-        document.querySelectorAll('.navbar .nav-item').forEach(function(everyitem){
-
-            everyitem.addEventListener('mouseover', function(e){
-
-                let el_link = this.querySelector('a[data-bs-toggle]');
-
-                if(el_link != null){
-                    let nextEl = el_link.nextElementSibling;
-                    el_link.classList.add('show');
-                    nextEl.classList.add('show');
-                }
-
-            });
-            everyitem.addEventListener('mouseleave', function(e){
-                let el_link = this.querySelector('a[data-bs-toggle]');
-
-                if(el_link != null){
-                    let nextEl = el_link.nextElementSibling;
-                    el_link.classList.remove('show');
-                    nextEl.classList.remove('show');
-                }
-
-
-            })
-        });
-
-    }
-// end if innerWidth
-}); 
     </script>
     <style type="text/css">
 
@@ -383,8 +410,10 @@ document.addEventListener("DOMContentLoaded", function(){
 
 <!-- <img src="{% static 'balsamwebapp/state_timeline.png' %}" alt="My image"> -->
 
-Showing time range: <input type="datetime-local" id="start_time" name="start-time"> - to -
-<input type="datetime-local" id="end_time" name="end-time">  <input type="submit" id="update_plot" value="Update" />
+Showing time range: <input type="datetime-local"  id="start_time" name="start-time"> - to -
+<input type="datetime-local" id="end_time" name="end-time"> - with 
+<input type="number" id="nbins" name="nbins"
+       min="10" max="200" value="100"> bins  <input type="submit" id="update_plot" value="Update" />
 <span id="update_msg"></span>
 
 <div>
