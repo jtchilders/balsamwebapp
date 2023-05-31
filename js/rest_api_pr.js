@@ -168,14 +168,28 @@ function onBalsamTokenReaderLoad(event){
 }
 
 function make_get_request(url,token){
+    return make_request("GET",url,token);
+}
+
+function make_delete_request(url,token){
+    return make_request("DELETE",url,token);
+}
+
+
+function make_request(type,url,token){
     return new Promise(function (resolve,reject) {
         var xhr = new XMLHttpRequest();
         xhr.onload = function() {
             if (xhr.status >= 200 && xhr.status < 300) {
-              resolve({
-                data: JSON.parse(xhr.response),
-                url: url
-              });
+              if(type == "GET"){
+                resolve({
+                    data: JSON.parse(xhr.response),
+                    url: url
+                });
+              }
+              else{
+                resolve(xhr.response);
+              }
             } else {
                 let reply = JSON.parse(xhr.response);
                 if(reply["detail"].includes("Could not validate credentials")){
@@ -195,14 +209,14 @@ function make_get_request(url,token){
             });
           };
         // console.log(url);
-        xhr.open("GET", url);
+        xhr.open(type, url);
         xhr.setRequestHeader("Content-Type", "application/json");
         xhr.setRequestHeader("Authorization", "Bearer " + token);
         xhr.send("");
     });
 }
 
-function create_custom_url(path,kwargs){
+function create_custom_url(path,kwargs = null){
     let url = base_url;
     if(path.startsWith('/')){
         url = url + path;
@@ -210,23 +224,26 @@ function create_custom_url(path,kwargs){
     else{
         url = url + '/' + path;
     }
-    url = url + '/?';
-    for(let key in kwargs){
-        let value = kwargs[key]
-        // console.log("kwargs:",key," = ",value);
-        if(value != null){
-            if(Array.isArray(value)){
-                for(let i=0;i<value.length;i++){
-                    url += key + '=' + String(value[i]) + '&'
+    url = url + '/';
+    if(kwargs != null){
+        url = url + '?';
+        for(let key in kwargs){
+            let value = kwargs[key]
+            // console.log("kwargs:",key," = ",value);
+            if(value != null){
+                if(Array.isArray(value)){
+                    for(let i=0;i<value.length;i++){
+                        url += key + '=' + String(value[i]) + '&'
+                    }
+                }
+                else{
+                    url += key + '=' + value + '&'
                 }
             }
-            else{
-                url += key + '=' + value + '&'
-            }
         }
+        if(url.endsWith('&'))
+            url = url.slice(0,url.length-1);
     }
-    if(url.endsWith('&'))
-        url = url.slice(0,url.length-1);
     // console.log(url);
     return url
 }
@@ -318,6 +335,49 @@ function get_jobs(token,
         });
     console.log(url)
     return make_get_request(url,token)
+}
+
+function get_job(token,id){
+    url = create_custom_url('jobs/' + id);
+    console.log(url);
+    return make_get_request(url,token);
+}
+
+function delete_jobs(token,
+    {
+        id=null, // one or array
+        parent_id=null, // one or array
+        app_id=null,
+        site_id=null, // one or array
+        batch_job_id=null,
+        last_update_before=null,
+        last_update_after=null,
+        workdir__contains=null,
+        state__ne=null, // CREATED, AWAITING_PARENTS, READY, STAGED_IN, PREPROCESSED, RUNNING, RUN_DONE, RUN_ERROR, RUN_TIMEOUT, RESTART_READY, POSTPROCESSED, STAGED_OUT, JOB_FINISHED, FAILED
+        state=null, // one or array
+        tags=null, // one or array
+        pending_file_cleanup=null,
+        ordering=null, // last_update, -last_update, id, -id, state, -state, workdir, -workdir
+    } = {}
+    ){
+
+    url = create_custom_url('jobs',{
+            "id":id,
+            "parent_id":parent_id,
+            "app_id":app_id,
+            "site_id":site_id,
+            "batch_job_id":batch_job_id,
+            "last_update_before":last_update_before,
+            "last_update_after":last_update_after,
+            "workdir__contains":workdir__contains,
+            "state__ne":state__ne,
+            "state":state,
+            "tags":tags,
+            "pending_file_cleanup":pending_file_cleanup,
+            "ordering":ordering,
+        });
+    console.log(url)
+    return make_delete_request(url,token)
 }
 
 

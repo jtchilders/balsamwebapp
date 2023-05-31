@@ -10,26 +10,38 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="js/rest_api_pr.js"></script>
     <script src="js/menu_helpers.js"></script>
+    <script src="js/plot_helpers.js?"></script>
+    <script src="js/sitedash_jobs_table.js"></script>
     <script type="text/javascript">
 
+// Make sure we have a site ID
 const queryString = window.location.search;
 const urlParams = new URLSearchParams(queryString);
 if(!urlParams.has('site_id')){
     alert("URL must contain '?site_id=<site-id>'");
 }
+// retrieve the pages site_id for later filtering
 const site_id = urlParams.get('site_id');
+
+// Set default time window for filtering
+var default_start_date = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+var default_end_date = new Date();
+
+// using globals to keep track of some plots/dataframes/tables
 var jdf = null;
 var evdf = null;
 var sites_data = null;
 var barchart = null;
 var jobtable = null;
-var default_start_date = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-var default_end_date = new Date();
+
+// this function starts all the code essentially
 $(document).ready( function () {
+    // if we are already logged in, start loading data
     if(have_token()){
         console.log("have token");
         get_data();
     }
+    // need to login before loading data
     else{
         console.log("no token; logging in");
         //  no cookie found so need to setup form to get token from file.
@@ -40,7 +52,7 @@ $(document).ready( function () {
             console.log("do login failed",response);
         });
     }
-
+    // set the time input fields to the default starting values set globally
     document.getElementById('end_time').value = default_end_date.toISOString().slice(0,16);
     document.getElementById('start_time').value = default_start_date.toISOString().slice(0,16);
 
@@ -51,10 +63,11 @@ function package_jobs(response){
     let jd = response.data;
     if(jd["count"] > 0){
         jdf = new dfd.DataFrame(jd["results"]);
+        // console.log(jd["results"][0]);
         let apply_func = function (x){return String(x);};
         let nt = jdf["tags"].apply(apply_func);
-        jdf.addColumn("tagstr", nt.values,{ inplace:true});
-        return jdf;
+        let jdf2 = jdf.addColumn("tagstr", nt.values);
+        return jdf2;
     }
     else{
         alert("date range returned 0 jobs");
@@ -62,23 +75,12 @@ function package_jobs(response){
     return null;
 }
 
-function update_jobs_table(jdf){
-    let table_jdf = jdf.loc({columns:["id","app_id","batch_job_id","tagstr","state"]});
-
-    if(jobtable == null){
-        jobtable = $('#jobdata').DataTable({
-            data: table_jdf.values,
-            paging: false,
-            ordering: true,
-            info: false,
-        });
-    }
-    else{
-        jobtable.clear().draw();
-        jobtable.rows.add(table_jdf.values).draw();
-    }
-    return table_jdf;
+// When the user clicks on div, open the popup
+function popFunc(jid) {
+    var popup = document.getElementById("popup_"+jid);
+    popup.classList.toggle("show");
 }
+
 
 function update_job_barchart(table_jdf){
     // adding chartjs
@@ -141,6 +143,9 @@ function update_job_barchart(table_jdf){
     };
     
     var chartOptions = {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
         layout: {
             padding: 20
         },
@@ -175,106 +180,7 @@ function update_job_barchart(table_jdf){
 }
 
 var runbar = null;
-function make_timeline(evt_to,evt_from,jdf,chart_canvas){
-    let start_time = new Date(document.getElementById('start_time').value);
-    let end_time = new Date(document.getElementById('end_time').value);
-    let nbins = Number(document.getElementById('nbins').value);
-    
-    let total_time_ms = (end_time - start_time);
-    let bin_time_ms = total_time_ms / nbins;
-    let bin_time_min = bin_time_ms / 1000 / 60;
-    
-    let bin_center = Array(nbins);
-    let bin_evt_to = Array(nbins);
-    let bin_evt_from = Array(nbins);
-    bin_evt_to[0] = 0;
-    bin_evt_from[0] = 0;
-    for(let i=0;i<nbins;i++){
-        let bin_start = new Date(start_time);
-        bin_start.setMinutes(start_time.getMinutes() + (i*bin_time_min));
-        let bin_end = new Date(start_time);
-        bin_end.setMinutes(start_time.getMinutes() + ((i+1)*bin_time_min));
-        let center = new Date(start_time);
-        center.setMinutes(start_time.getMinutes() + bin_time_min*(i+0.5));
-        bin_center[i] = center;
-        for(const evt of evt_to["results"]){
-            let ts = new Date(evt["timestamp"]);
-            if(bin_start < ts && ts < bin_end){
-                bin_evt_to[i] += 1;
-            }
-        }
-        for(const evt of evt_from["results"]){
-            let ts = new Date(evt["timestamp"]);
-            if(bin_start < ts && ts < bin_end){
-                bin_evt_from[i] += 1;
-            }
-        }
 
-        if(i<(nbins-1)){
-            bin_evt_to[i+1] = bin_evt_to[i];
-            bin_evt_from[i+1] = bin_evt_from[i];
-        }
-    }
-    console.log('bin_evt_to',bin_evt_to);
-    console.log('bin_evt_from',bin_evt_from);
-
-    let bin_running = Array(nbins);
-    bin_running[0] = 0;
-    for(let i=1;i<nbins;i++){
-        bin_running[i] = bin_evt_to[i] - bin_evt_from[i-1];
-    }
-    console.log('bin_running',bin_running);
-
-    xlabels = [];
-    for(let i=0;i<nbins;i++){
-        let x = bin_center[i];
-        xlabels.push(x.getMonth()+"-"+x.getDate()+" "+x.getHours()+":"+x.getMinutes());
-    }
-
-    var data = {
-            label: "RUNNING",
-            data: bin_running,
-            borderWidth: 1
-        };
-    var datasets = {
-        labels: xlabels,
-        datasets: [data],
-    };
-    
-    var chartOptions = {
-        layout: {
-            padding: 20
-        },
-        animations: {
-            tension: {
-                duration: 10000,
-                easing: 'linear',
-                from: 1,
-                to: 0,
-                loop: true
-            }
-        },
-        zoom: {
-            enabled: true,
-            mode: 'x',
-        },
-        plugins: {
-            legend: {
-                display: true,
-
-            }
-        }
-    };
-    
-    if(runbar != null){
-        runbar.destroy();
-    }
-    runbar = new Chart(chart_canvas, {
-        type: 'bar',
-        data: datasets,
-        options: chartOptions
-    });
-}
 
 function update_timeline(jdf){
     const chart_canvas = document.getElementById('state_timeline');
@@ -302,7 +208,7 @@ function update_all(last_update_after,last_update_before){
             update_job_barchart(table_jdf);
         }
     }).then(function (){
-        update_timeline(jdf);
+        make_timeline(jdf,'state_timeline');
     });
 }
 
@@ -311,6 +217,7 @@ function get_data(){
         // console.log(response.url);
         sites_data = response.data;
         fill_sites_menu();
+        update_title_site_info();
     })
 
     update_all(default_start_date.toISOString(),null);
@@ -325,47 +232,27 @@ function get_data(){
     });
 }
 
-
-function fill_sites_menu(){
-    let sitemenu = document.getElementById("sitedash-dropdown");
-    
-    for(let i = 0;i < sites_data["results"].length; i++){
-        result = sites_data["results"][i];
-        let local_site_id = result["id"];
-        let local_site_name = result["name"];
-
-        let li = document.createElement("li");
-        let link = document.createElement("a");
-        link.setAttribute("href", '/static/balsamwebapp/sitedash.html?site_id=' + local_site_id);
-        link.textContent = local_site_name;
-        link.classList.add("dropdown-item");
-
-        li.appendChild(link);
-        sitemenu.appendChild(li);
-
-        // update the title for status
-        if(result["id"] == site_id){
-            let last_refresh = new Date(Date.parse(result["last_refresh"]));
-            let current_time = new Date();
-            let diff = (current_time - last_refresh ) * 1e-3 / 60;
-            let days = diff / 60 / 24;
-            $("#site_name").each(function(){
-                $(this).text(result["name"]);
-            });
-            $("#site_status").each(function(){
-                if(days > 1){
-                    $(this).css('background-color','white');
-                    $(this).css('color','red');
-                    $(this).text("OFFLINE");
-                }
-                else{
-                    $(this).css('background-color','white');
-                    $(this).css('color','green');
-                    $(this).text("ONLINE");
-                }
-            });
+function update_title_site_info(){
+// update the title for status
+    let last_refresh = new Date(Date.parse(result["last_refresh"]));
+    let current_time = new Date();
+    let diff = (current_time - last_refresh ) * 1e-3 / 60;
+    let days = diff / 60 / 24;
+    $("#site_name").each(function(){
+        $(this).text(result["name"]);
+    });
+    $("#site_status").each(function(){
+        if(days > 1){
+            $(this).css('background-color','white');
+            $(this).css('color','red');
+            $(this).text("OFFLINE");
         }
-    }
+        else{
+            $(this).css('background-color','white');
+            $(this).css('color','green');
+            $(this).text("ONLINE");
+        }
+    });
 }
 
     </script>
@@ -380,9 +267,36 @@ function fill_sites_menu(){
 }	
 /* ============ desktop view .end// ============ */
 
+.page_content {
+  max-width: 1000px;
+  margin: auto;
+}
+
+.chart_container {
+   width: 100%;
+}
+#state_timeline {
+   height: 350px;
+}
+#state_barchart {
+    height: 150px;
+}
+
+/* Add animation (fade in the popup) */
+@-webkit-keyframes fadeIn {
+  from {opacity: 0;} 
+  to {opacity: 1;}
+}
+
+@keyframes fadeIn {
+  from {opacity: 0;}
+  to {opacity:1 ;}
+}
+
     </style>
 </head>
 <body>
+<div class="page_content">
 
 <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
     <div class="container-fluid">
@@ -405,40 +319,49 @@ function fill_sites_menu(){
 </nav>
 
 <br>
+<div id="page_title">
 <H2>Site <span id="site_name"></span> is <span id="site_status"> </span> </H2>
+</div>
 <br>
 
-<!-- <img src="{% static 'balsamwebapp/state_timeline.png' %}" alt="My image"> -->
-
-Showing time range: <input type="datetime-local"  id="start_time" name="start-time"> - to -
-<input type="datetime-local" id="end_time" name="end-time"> - with 
-<input type="number" id="nbins" name="nbins"
-       min="10" max="200" value="100"> bins  <input type="submit" id="update_plot" value="Update" />
-<span id="update_msg"></span>
-
-<div>
-    <canvas id="state_timeline"></canvas>
+<div id="user_datetime_input">
+    Showing time range: <input type="datetime-local"  id="start_time" name="start-time"> - to - <input type="datetime-local" id="end_time" name="end-time"> - with <input type="number" id="nbins" name="nbins" min="10" max="200" value="100"> bins  <input type="submit" id="update_plot" value="Update" />
+    <span id="update_msg"></span>
 </div>
 
-<div>
-    <canvas id="state_barchart"></canvas>
+<div id="plot_area" class="chart_area">
+    <div id="plot_row_A" class="chart_row">
+        <div class="chart_container">
+            <canvas id="state_timeline"></canvas>
+        </div>
+        <div class="chart_container">
+            <canvas id="state_barchart"></canvas>
+        </div>
+    </div>
 </div>
 
+<br>
 
-<h1>Jobs</h1>
-<table id="jobdata" class="display" style="width:90%;max-width:600px">
-    <thead>
-        <tr>
-            <th>ID</th>
-            <th>App ID</th>
-            <th>Batch Job ID</th>
-            <th>Tags</th>
-            <th>State</th>
-        </tr>
-    </thead>
-</table> 
-
+<div class="table_area">
+    <h1>Job Tables (currently includes ALL jobs in DB)</h1>
+    <div id="jobdata_buttons">
+        <div id="single_job_buttons" style="margin: 10px;float:left;"> Select one job and click: <input type="button" value="Job Details" id="job-details-button"></div>
+        <div id="multi_job_buttons" style="margin: 10px;float:left;">  Select many jobs and click: <input type="button" value="Delete" id="job-delete-button"></div>
+    </div>
+    <table id="jobdata" class="display">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>App ID</th>
+                <th>Batch Job ID</th>
+                <th>Tags</th>
+                <th>State</th>
+            </tr>
+        </thead>
+    </table> 
+</div>
 <div id="jobs_table"></div>
 
+</div>
 </body>
 </html>
