@@ -35,6 +35,53 @@ function make_table(df){
     return table;
 }
 
+function delete_job_button(){
+    let data = jobtable.rows('.selected').data();
+    let nrows = data.length;
+    let confirm_delete = confirm("Are you sure you would like to delete " + nrows + " jobs from the central Balsam database?");
+    console.log('delete jobs: ',confirm_delete);
+    if(confirm_delete){
+        // make list of job ids
+        let jobids = [];
+        for(let i=0;i<nrows;i++){
+            jobids.push(data[i][0]);
+        }
+        delete_jobs(token,{id:jobids}).then(function (response){
+            console.log(response);
+            location.reload();
+        });
+    }
+}
+
+function duplicate_job_button(){
+    let data = jobtable.rows('.selected').data();
+    let nrows = data.length;
+    if(nrows > 1){
+        alert('must only select 1 row for details.');
+    }
+    else{
+        console.log('data = ',data[0]);
+        let row = data[0];
+        let jobid = row[0];
+        location.href = '/static/balsamwebapp/jobduplicate.html?job_id=' + jobid;
+    }
+}
+
+function job_details_button(){
+    let data = jobtable.rows('.selected').data();
+    let nrows = data.length;
+    if(nrows > 1){
+        alert('must only select 1 row for details.');
+    }
+    else{
+        console.log('data = ',data[0]);
+        let row = data[0];
+        let jobid = row[0];
+        location.href = '/static/balsamwebapp/jobdetails.html?job_id=' + jobid;
+    }
+}
+
+
 
 function update_jobs_table(jdf){
     let table_jdf = jdf.loc({columns:["id","app_id","batch_job_id","tagstr","state"]});
@@ -56,47 +103,12 @@ function update_jobs_table(jdf){
         $(this).toggleClass('selected');
     });
 
-    $('#job-details-button').click(function () {
-        let data = jobtable.rows('.selected').data();
-        let nrows = data.length;
-        if(nrows > 1){
-            alert('must only select 1 row for details.');
-        }
-        else{
-            console.log('data = ',data[0]);
-            let row = data[0];
-            let jobid = row[0];
-            location.href = '/static/balsamwebapp/jobdetails.html?job_id=' + jobid;
-        }
-    });
+    // single job buttons
+    $('#job-details-button').click(job_details_button);
+    $('#job-duplicate-button').click(duplicate_job_button);
 
-
-    $('#job-delete-button').click(function () {
-        let data = jobtable.rows('.selected').data();
-        let nrows = data.length;
-        let confirm_delete = confirm("Are you sure you would like to delete " + nrows + " jobs from the central Balsam database?");
-        console.log('delete jobs: ',confirm_delete);
-        if(confirm_delete){
-            // make list of job ids
-            let jobids = [];
-            for(let i=0;i<nrows;i++){
-                jobids.push(data[i][0]);
-            }
-            delete_jobs(token,{id:jobids}).then(function (response){
-                console.log(response);
-                location.reload();
-            });
-        }
-        // if(nrows > 1){
-        //     alert('must only select 1 row for details.');
-        // }
-        // else{
-        //     console.log('data = ',data[0]);
-        //     let row = data[0];
-        //     let jobid = row[0];
-        //     location.href = '/static/balsamwebapp/jobdetails.html?job_id=' + jobid;
-        // }
-    });
+    // multi-job buttons
+    $('#job-delete-button').click(delete_job_button);
 
     return table_jdf;
 }

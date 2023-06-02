@@ -175,8 +175,11 @@ function make_delete_request(url,token){
     return make_request("DELETE",url,token);
 }
 
+function make_post_request(url,token,body){
+    return make_request("POST",url,token,body);
+}
 
-function make_request(type,url,token){
+function make_request(type,url,token,body = ""){
     return new Promise(function (resolve,reject) {
         var xhr = new XMLHttpRequest();
         xhr.onload = function() {
@@ -212,7 +215,7 @@ function make_request(type,url,token){
         xhr.open(type, url);
         xhr.setRequestHeader("Content-Type", "application/json");
         xhr.setRequestHeader("Authorization", "Bearer " + token);
-        xhr.send("");
+        xhr.send(body);
     });
 }
 
@@ -341,6 +344,49 @@ function get_job(token,id){
     url = create_custom_url('jobs/' + id);
     console.log(url);
     return make_get_request(url,token);
+}
+
+// input must follow this format:
+// [
+//     {
+//       "workdir": "test_jobs/test1",
+//       "tags": {
+//         "system": "H2O"
+//       },
+//       "serialized_parameters": "",
+//       "data": {
+//         "energy": -0.5
+//       },
+//       "return_code": 0,
+//       "num_nodes": 1,
+//       "ranks_per_node": 1,
+//       "threads_per_rank": 1,
+//       "threads_per_core": 1,
+//       "launch_params": {
+//         "cpu_affinity": "depth"
+//       },
+//       "gpus_per_rank": 0.5,
+//       "node_packing_count": 12,
+//       "wall_time_min": 30,
+//       "app_id": 3,
+//       "parent_ids": [
+//         2,
+//         3
+//       ],
+//       "transfers": {
+//         "input_file": {
+//           "location_alias": "MyCluster",
+//           "path": "/path/to/input.dat"
+//         }
+//       }
+//     }
+//   ]
+function create_jobs(token,job_list_json){
+    url = create_custom_url('jobs');
+    console.log(url);
+    let body = JSON.stringify(job_list_json);
+    console.log(body);
+    return make_post_request(url,token,body);
 }
 
 function delete_jobs(token,

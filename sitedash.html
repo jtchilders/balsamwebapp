@@ -223,7 +223,7 @@ function get_data(){
     update_all(default_start_date.toISOString(),null);
 
 
-    jQuery('#update_plot').click(function(){
+    $('#update_plot').click(function(){
         let start_time = document.getElementById('start_time').value;
         let end_time = document.getElementById('end_time').value;
         console.log('in button click',start_time,end_time);
@@ -345,7 +345,10 @@ function update_title_site_info(){
 <div class="table_area">
     <h1>Job Tables (currently includes ALL jobs in DB)</h1>
     <div id="jobdata_buttons">
-        <div id="single_job_buttons" style="margin: 10px;float:left;"> Select one job and click: <input type="button" value="Job Details" id="job-details-button"></div>
+        <div id="single_job_buttons" style="margin: 10px;float:left;"> Select one job and click: 
+            <input type="button" value="Details" id="job-details-button">
+            <input type="button" value="Duplicate" id="job-duplicate-button">
+        </div>
         <div id="multi_job_buttons" style="margin: 10px;float:left;">  Select many jobs and click: <input type="button" value="Delete" id="job-delete-button"></div>
     </div>
     <table id="jobdata" class="display">
