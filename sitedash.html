@@ -28,11 +28,11 @@ var default_start_date = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 var default_end_date = new Date();
 
 // using globals to keep track of some plots/dataframes/tables
-var jdf = null;
-var evdf = null;
+var jdf = null; // jobs
 var sites_data = null;
 var barchart = null;
 var jobtable = null;
+var runbar = null;
 
 // this function starts all the code essentially
 $(document).ready( function () {
@@ -59,11 +59,28 @@ $(document).ready( function () {
 });
 
 
-function package_jobs(response){
-    let jd = response.data;
+function get_data(){
+    get_sites(token).then(function (response){
+        // console.log(response.url);
+        sites_data = response.data;
+        fill_sites_menu();
+        update_title_site_info();
+    })
+
+    update_all(default_start_date.toISOString(),null);
+
+    $('#update_plot').click(function(){
+        let start_time = document.getElementById('start_time').value;
+        let end_time = document.getElementById('end_time').value;
+        console.log('in button click',start_time,end_time);
+        
+        update_all(start_time,end_time);
+    });
+}
+
+function package_jobs(jd){
     if(jd["count"] > 0){
         jdf = new dfd.DataFrame(jd["results"]);
-        // console.log(jd["results"][0]);
         let apply_func = function (x){return String(x);};
         let nt = jdf["tags"].apply(apply_func);
         let jdf2 = jdf.addColumn("tagstr", nt.values);
@@ -75,162 +92,78 @@ function package_jobs(response){
     return null;
 }
 
-// When the user clicks on div, open the popup
-function popFunc(jid) {
-    var popup = document.getElementById("popup_"+jid);
-    popup.classList.toggle("show");
-}
 
-
-function update_job_barchart(table_jdf){
-    // adding chartjs
-    const chart_canvas = document.getElementById('state_barchart');
-    let grp = table_jdf.groupby(["state"]);
-    let running = 0;
-    if("RUNNING" in grp.colDict){
-        running = grp.colDict["RUNNING"].state.length;
-    }
-    let done = 0;
-    if("JOB_FINISHED" in grp.colDict){
-        done = grp.colDict["JOB_FINISHED"].state.length;
-    }
-    let ready = 0;
-    for(const st of ['CREATED',
-                    'AWAITING_PARENTS',
-                    'READY',
-                    'STAGED_IN',
-                    'PREPROCESSED',
-                    'RESTART_READY']){
-        if(st in grp.colDict){
-            ready = ready + grp.colDict[st].state.length;
-        }
-    }
-    let failed = 0;
-    for(const st of [
-                    'RUN_ERROR',
-                    'RUN_TIMEOUT',
-                    'FAILED',]){
-        if(st in grp.colDict){
-            failed = failed + grp.colDict[st].state.length;
-        }
-    }
-
-    var data = {
-            data: [ready,running,done,failed],
-            backgroundColor: [
-            'rgba(255, 99, 132, 0.2)',
-            'rgba(255, 159, 64, 0.2)',
-            'rgba(255, 205, 86, 0.2)',
-            'rgba(75, 192, 192, 0.2)',
-            'rgba(54, 162, 235, 0.2)',
-            'rgba(153, 102, 255, 0.2)',
-            'rgba(201, 203, 207, 0.2)'
-            ],
-            borderColor: [
-            'rgb(255, 99, 132)',
-            'rgb(255, 159, 64)',
-            'rgb(255, 205, 86)',
-            'rgb(75, 192, 192)',
-            'rgb(54, 162, 235)',
-            'rgb(153, 102, 255)',
-            'rgb(201, 203, 207)'
-            ],
-            borderWidth: 1
-        };
-    var datasets = {
-        labels: ["ready","running","finished","failed"],
-        datasets: [data],
-    };
-    
-    var chartOptions = {
-        indexAxis: 'y',
-        responsive: true,
-        maintainAspectRatio: false,
-        layout: {
-            padding: 20
-        },
-        animations: {
-            tension: {
-                duration: 10000,
-                easing: 'linear',
-                from: 1,
-                to: 0,
-                loop: true
-            }
-        },
-        zoom: {
-            enabled: true,
-            mode: 'x',
-        },
-        plugins: {
-            legend: {
-                display: false
-            }
-        }
-    };
-    
-    if(barchart != null){
-        barchart.destroy();
-    }
-    barchart = new Chart(chart_canvas, {
-        type: 'bar',
-        data: datasets,
-        options: chartOptions
-    });
-}
-
-var runbar = null;
-
-
-function update_timeline(jdf){
-    const chart_canvas = document.getElementById('state_timeline');
-    var evt_to = null;
-    var evt_from = null;
-    if(jdf != null){
-        get_events(token,{job_id:jdf["id"].values,to_state:"RUNNING"}).then(function (response) {
-            console.log("counts",response.data["count"]);
-            evt_to = response.data;
-            get_events(token,{job_id:jdf["id"].values,from_state:"RUNNING"}).then(function (response) {
-                console.log("counts",response.data["count"]);
-                evt_from = response.data;
-                make_timeline(evt_to,evt_from,jdf,chart_canvas);
-            });
-        });
-    }
-}
 
 function update_all(last_update_after,last_update_before){
+
+    var batchjob_histogram = null;
+    var job_histogram = null;
     var jdf = null;
-    get_jobs(token,{site_id:site_id,last_update_after:last_update_after,last_update_before:last_update_before,ordering:"-last_update"}).then( function (response){
-        jdf = package_jobs(response);
-        if(jdf != null){
-            let table_jdf = update_jobs_table(jdf);
-            update_job_barchart(table_jdf);
-        }
-    }).then(function (){
-        make_timeline(jdf,'state_timeline');
-    });
-}
+    let pr = [];
+    pr.push(get_jobs(token,{site_id:site_id,last_update_after:last_update_after,last_update_before:last_update_before,ordering:"-last_update"}));
+    pr.push(get_batch_jobs(token,{site_id:site_id,start_time_after:last_update_after,start_time_before:last_update_before,ordering:"-start_time"}));
+    Promise.all(pr).then( function (responses){
 
-function get_data(){
-    get_sites(token).then(function (response){
-        // console.log(response.url);
-        sites_data = response.data;
-        fill_sites_menu();
-        update_title_site_info();
-    })
-
-    update_all(default_start_date.toISOString(),null);
-
-
-    $('#update_plot').click(function(){
-        let start_time = document.getElementById('start_time').value;
-        let end_time = document.getElementById('end_time').value;
-        console.log('in button click',start_time,end_time);
+        let us = get_user_settings();
+        let endTime = us.end_time;
+        let startTime = us.start_time;
+        let numBins = us.nbins;
         
-        update_all(start_time,end_time);
+        let batchjobs = null;
+        let jobs = null;
+        let newpr = [];
+        for(const i in responses){
+            let response = responses[i];
+            let data = response.data;
+            let url = response.url;
+            if(data.count > 0){
+                if(url.includes("batch-jobs")){
+                    batchjobs = data.results;
+                    const ids = batchjobs.map(batchjob => batchjob.id);
+                    // Get events for each state change for the list of job IDs
+                    newpr.push(get_events(token,{batch_job_id:ids}));
+                }
+                else{
+                    jobs = data.results;
+                    jdf = package_jobs(data);
+                    update_job_barchart(jdf);
+                    update_jobs_table(jdf);
+                    const ids = jobs.map(job => job.id);
+                    newpr.push(get_events(token,{job_id:ids}));
+                }
+            }
+            else{
+                alert("no jobs returned from url: " + url);
+            }
+        }
+
+        Promise.all(newpr).then(function (new_responses){
+            for(const i in new_responses){
+                let response = new_responses[i];
+                let data = response.data;
+                let url = response.url;
+
+                if(data.count > 0){
+                    let events = data.results;
+                    if(url.includes("batch_job_id")){
+                        batchjob_histogram = generateBatchJobHistogram(batchjobs, startTime, endTime, numBins);
+                    }
+                    else{
+                        job_histogram = generateJobHistogram(events, jobs, startTime, endTime, numBins);
+                    }
+                }
+                else{
+                    alert("no events returned from url: " + url);
+                }
+            }
+
+        }).then(function (){
+            make_timeline(batchjob_histogram,job_histogram,'state_timeline');
+        });
+
     });
 }
+
 
 function update_title_site_info(){
 // update the title for status

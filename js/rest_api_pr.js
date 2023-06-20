@@ -98,7 +98,7 @@ function send_login_request() {
 function do_login(){
     return new Promise( function (resolve,reject){
         send_login_request().then(function (response){
-            // console.log('done send login reqeuest:',response);
+            console.log('done send login reqeuest:',response);
 
             get_token().then(function (response){
                 // console.log('checked for token: ',response);
@@ -106,12 +106,12 @@ function do_login(){
                 token = response['access_token'];
                 resolve(true);
             }).catch(function (response){
-                // console.log('caught after checked for token:',response);
+                console.log('caught after checked for token:',response);
                 reject(false);
             });
 
         }).catch(function (response){
-            // console.log('caught after send login reqeuest:',response);
+            console.log('caught after send login reqeuest:',response);
             reject(false);
         });
     });
