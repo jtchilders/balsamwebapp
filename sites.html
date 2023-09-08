@@ -8,7 +8,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta2/dist/css/bootstrap.min.css" rel="stylesheet" crossorigin="anonymous">
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta2/dist/js/bootstrap.bundle.min.js"crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/danfojs@1.1.2/lib/bundle.min.js"></script>
-    <script src="js/rest_api_pr.js?v=22"></script>
+    <script src="js/rest_api_pr.js?v=21"></script>
     
     <script type="text/javascript">
 var sites_data = null;
@@ -36,6 +36,7 @@ function create_sites_table() {
     let sites_pr = get_sites(token).then(function (response){
         // console.log(response.url);
         sites_data = response.data;
+        fill_sites_menu();
     }).then( function(){
         let pr = [];
         for(let i=0;i<sites_data["results"].length;i++){
@@ -124,6 +125,24 @@ function create_sites_table() {
 
 }
 
+function fill_sites_menu(){
+    let sitemenu = document.getElementById("sitedash-dropdown");
+    
+    for(let i = 0;i < sites_data["results"].length; i++){
+        result = sites_data["results"][i];
+        let site_id = result["id"];
+        let site_name = result["name"];
+
+        let li = document.createElement("li");
+        let link = document.createElement("a");
+        link.setAttribute("href", '/static/balsamwebapp/sitedash.html?site_id=' + site_id);
+        link.textContent = site_name;
+        link.classList.add("dropdown-item");
+
+        li.appendChild(link);
+        sitemenu.appendChild(li);
+    }
+}
 
 function fill_table(){
     document.getElementById("sites_count").textContent = sites_data["count"];
@@ -178,18 +197,21 @@ function fill_table(){
             { data: "num_batchjobs"},
         ],
         "rowCallback":  function( row, data ) {
-            if( parseFloat(data.last_refresh) < 1){
-                // set name td class
-                row.getElementsByTagName('td')[0].classList.add("False");
-            }
-            else{
-                // set name td class
-                row.getElementsByTagName('td')[0].classList.add("True");
-            }
+            
             // add link to name td
             const link = document.createElement("a");
             link.setAttribute("href", '/static/balsamwebapp/sitedash.html?site_id=' + idLookup[data.name]);
             link.textContent = data.name;
+            if( parseFloat(data.last_refresh) < 1){
+                // set name td class
+                link.classList.add("False");
+                row.getElementsByTagName('td')[0].classList.add("False");
+            }
+            else{
+                // set name td class
+                link.classList.add("True");
+                row.getElementsByTagName('td')[0].classList.add("True");
+            }
             row.getElementsByTagName('td')[0].textContent = "";
             row.getElementsByTagName('td')[0].appendChild(link);
 
@@ -243,50 +265,15 @@ function fill_table(){
     });
 
     
-    $('#sitedata td.True').each(function(){
+    $('#sitedata .True').each(function(){
         $(this).css('background-color','red');
         $(this).css('color','white');
     });
-    $('#sitedata td.False').each(function(){
+    $('#sitedata .False').each(function(){
         $(this).css('background-color','green');
         $(this).css('color','white');
-    });
-    
+    });   
 }
-
-document.addEventListener("DOMContentLoaded", function(){
-    // make it as accordion for smaller screens
-    if (window.innerWidth > 992) {
-
-        document.querySelectorAll('.navbar .nav-item').forEach(function(everyitem){
-
-            everyitem.addEventListener('mouseover', function(e){
-
-                let el_link = this.querySelector('a[data-bs-toggle]');
-
-                if(el_link != null){
-                    let nextEl = el_link.nextElementSibling;
-                    el_link.classList.add('show');
-                    nextEl.classList.add('show');
-                }
-
-            });
-            everyitem.addEventListener('mouseleave', function(e){
-                let el_link = this.querySelector('a[data-bs-toggle]');
-
-                if(el_link != null){
-                    let nextEl = el_link.nextElementSibling;
-                    el_link.classList.remove('show');
-                    nextEl.classList.remove('show');
-                }
-
-
-            })
-        });
-
-    }
-// end if innerWidth
-}); 
     </script>
     
     <style type="text/css">
@@ -334,7 +321,7 @@ text-decoration: none;
             <span class="navbar-toggler-icon"></span>
         </button>
         <div class="collapse navbar-collapse" id="main_nav">
-        <ul class="navbar-nav">
+        <ul class="navbar-nav" id="main-menu">
             <li class="nav-item active"> <a class="nav-link" href="#"> Sites </a> </li>
             <li class="nav-item"><a class="nav-link" href="#"> About </a></li>
             <li class="nav-item dropdown">
@@ -350,8 +337,7 @@ text-decoration: none;
     </div> <!-- container-fluid.// -->
 </nav>
 
-
-<h1 id="title">Sites</h1>
+<br>
 <div>site count: <span id="sites_count"></span> sites received: <span id="sites_recv"></span></div>
 <table id="sitedata" class="display">
     <thead>
