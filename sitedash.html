@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.13.2/css/jquery.dataTables.min.css">
+    <script type="text/javascript" src="https://code.jquery.com/jquery-3.5.1.js"></script>
+    <script type="text/javascript" src="https://cdn.datatables.net/1.13.2/js/jquery.dataTables.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta2/dist/css/bootstrap.min.css" rel="stylesheet" crossorigin="anonymous">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta2/dist/js/bootstrap.bundle.min.js"crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/danfojs@1.1.2/lib/bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="js/rest_api_pr.js"></script>
+    <script src="js/menu_helpers.js"></script>
+    <script src="js/plot_helpers.js?"></script>
+    <script src="js/sitedash_jobs_table.js"></script>
+    <script type="text/javascript">
+
+// Make sure we have a site ID
+const queryString = window.location.search;
+const urlParams = new URLSearchParams(queryString);
+if(!urlParams.has('site_id')){
+    alert("URL must contain '?site_id=<site-id>'");
+}
+// retrieve the pages site_id for later filtering
+const site_id = urlParams.get('site_id');
+
+// Set default time window for filtering
+var default_start_date = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+var default_end_date = new Date();
+
+// using globals to keep track of some plots/dataframes/tables
+var jdf = null; // jobs
+var sites_data = null;
+var barchart = null;
+var jobtable = null;
+var runbar = null;
+
+// this function starts all the code essentially
+$(document).ready( function () {
+    // if we are already logged in, start loading data
+    if(have_token()){
+        console.log("have token");
+        get_data();
+    }
+    // need to login before loading data
+    else{
+        console.log("no token; logging in");
+        //  no cookie found so need to setup form to get token from file.
+        do_login().then(function (response) {
+            console.log("do login completed",response);
+            get_data();
+        }).catch(function (response){
+            console.log("do login failed",response);
+        });
+    }
+    // set the time input fields to the default starting values set globally
+    document.getElementById('end_time').value = default_end_date.toISOString().slice(0,16);
+    document.getElementById('start_time').value = default_start_date.toISOString().slice(0,16);
+
+});
+
+
+function get_data(){
+    get_sites(token).then(function (response){
+        // console.log(response.url);
+        sites_data = response.data;
+        fill_sites_menu();
+        update_title_site_info();
+    })
+
+    update_all(default_start_date.toISOString(),null);
+
+    $('#update_plot').click(function(){
+        let start_time = document.getElementById('start_time').value;
+        let end_time = document.getElementById('end_time').value;
+        console.log('in button click',start_time,end_time);
+        
+        update_all(start_time,end_time);
+    });
+}
+
+function package_jobs(jd){
+    if(jd["count"] > 0){
+        jdf = new dfd.DataFrame(jd["results"]);
+        let apply_func = function (x){return String(x);};
+        let nt = jdf["tags"].apply(apply_func);
+        let jdf2 = jdf.addColumn("tagstr", nt.values);
+        return jdf2;
+    }
+    else{
+        alert("date range returned 0 jobs");
+    }
+    return null;
+}
+
+
+
+function update_all(last_update_after,last_update_before){
+
+    var batchjob_histogram = null;
+    var job_histogram = null;
+    var jdf = null;
+    let pr = [];
+    pr.push(get_jobs(token,{site_id:site_id,last_update_after:last_update_after,last_update_before:last_update_before,ordering:"-last_update"}));
+    pr.push(get_batch_jobs(token,{site_id:site_id,start_time_after:last_update_after,start_time_before:last_update_before,ordering:"-start_time"}));
+    Promise.all(pr).then( function (responses){
+
+        let us = get_user_settings();
+        let endTime = us.end_time;
+        let startTime = us.start_time;
+        let numBins = us.nbins;
+        
+        let batchjobs = null;
+        let jobs = null;
+        let newpr = [];
+        for(const i in responses){
+            let response = responses[i];
+            let data = response.data;
+            let url = response.url;
+            if(data.count > 0){
+                if(url.includes("batch-jobs")){
+                    batchjobs = data.results;
+                    const ids = batchjobs.map(batchjob => batchjob.id);
+                    // Get events for each state change for the list of job IDs
+                    newpr.push(get_events(token,{batch_job_id:ids}));
+                }
+                else{
+                    jobs = data.results;
+                    jdf = package_jobs(data);
+                    update_job_barchart(jdf);
+                    update_jobs_table(jdf);
+                    const ids = jobs.map(job => job.id);
+                    newpr.push(get_events(token,{job_id:ids}));
+                }
+            }
+            else{
+                alert("no jobs returned from url: " + url);
+            }
+        }
+
+        Promise.all(newpr).then(function (new_responses){
+            for(const i in new_responses){
+                let response = new_responses[i];
+                let data = response.data;
+                let url = response.url;
+
+                if(data.count > 0){
+                    let events = data.results;
+                    if(url.includes("batch_job_id")){
+                        batchjob_histogram = generateBatchJobHistogram(batchjobs, startTime, endTime, numBins);
+                    }
+                    else{
+                        job_histogram = generateJobHistogram(events, jobs, startTime, endTime, numBins);
+                    }
+                }
+                else{
+                    alert("no events returned from url: " + url);
+                }
+            }
+
+        }).then(function (){
+            make_timeline(batchjob_histogram,job_histogram,'state_timeline');
+        });
+
+    });
+}
+
+
+function update_title_site_info(){
+// update the title for status
+    let last_refresh = new Date(Date.parse(result["last_refresh"]));
+    let current_time = new Date();
+    let diff = (current_time - last_refresh ) * 1e-3 / 60;
+    let days = diff / 60 / 24;
+    $("#site_name").each(function(){
+        $(this).text(result["name"]);
+    });
+    $("#site_status").each(function(){
+        if(days > 1){
+            $(this).css('background-color','white');
+            $(this).css('color','red');
+            $(this).text("OFFLINE");
+        }
+        else{
+            $(this).css('background-color','white');
+            $(this).css('color','green');
+            $(this).text("ONLINE");
+        }
+    });
+}
+
+    </script>
+    <style type="text/css">
+
+/* ============ desktop view ============ */
+@media all and (min-width: 992px) {
+	.navbar .nav-item .dropdown-menu{ display: none; }
+	.navbar .nav-item:hover .nav-link{   }
+	.navbar .nav-item:hover .dropdown-menu{ display: block; }
+	.navbar .nav-item .dropdown-menu{ margin-top:0; }
+}	
+/* ============ desktop view .end// ============ */
+
+.page_content {
+  max-width: 1000px;
+  margin: auto;
+}
+
+.chart_container {
+   width: 100%;
+}
+#state_timeline {
+   height: 350px;
+}
+#state_barchart {
+    height: 150px;
+}
+
+/* Add animation (fade in the popup) */
+@-webkit-keyframes fadeIn {
+  from {opacity: 0;} 
+  to {opacity: 1;}
+}
+
+@keyframes fadeIn {
+  from {opacity: 0;}
+  to {opacity:1 ;}
+}
+
+    </style>
+</head>
+<body>
+<div class="page_content">
+
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="#">Balsam Monitor</a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#main_nav"  aria-expanded="false" aria-label="Toggle navigation">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="main_nav">
+        <ul class="navbar-nav" id="main-menu">
+            <li class="nav-item active"> <a class="nav-link" href="/static/balsamwebapp/sites.html"> Sites </a> </li>
+            <li class="nav-item"><a class="nav-link" href="#"> About </a></li>
+            <li class="nav-item dropdown">
+                <a class="nav-link  dropdown-toggle" href="#" data-bs-toggle="dropdown">  Site Dashboards  </a>
+                <ul class="dropdown-menu" id="sitedash-dropdown">
+                </ul>
+            </li>
+        </ul>
+        </div> <!-- navbar-collapse.// -->
+    </div> <!-- container-fluid.// -->
+</nav>
+
+<br>
+<div id="page_title">
+<H2>Site <span id="site_name"></span> is <span id="site_status"> </span> </H2>
+</div>
+<br>
+
+<div id="user_datetime_input">
+    Showing time range: <input type="datetime-local"  id="start_time" name="start-time"> - to - <input type="datetime-local" id="end_time" name="end-time"> - with <input type="number" id="nbins" name="nbins" min="10" max="200" value="100"> bins  <input type="submit" id="update_plot" value="Update" />
+    <span id="update_msg"></span>
+</div>
+
+<div id="plot_area" class="chart_area">
+    <div id="plot_row_A" class="chart_row">
+        <div class="chart_container">
+            <canvas id="state_timeline"></canvas>
+        </div>
+        <div class="chart_container">
+            <canvas id="state_barchart"></canvas>
+        </div>
+    </div>
+</div>
+
+<br>
+
+<div class="table_area">
+    <h1>Job Tables (currently includes ALL jobs in DB)</h1>
+    <div id="jobdata_buttons">
+        <div id="single_job_buttons" style="margin: 10px;float:left;"> Select one job and click: 
+            <input type="button" value="Details" id="job-details-button">
+            <input type="button" value="Duplicate" id="job-duplicate-button">
+        </div>
+        <div id="multi_job_buttons" style="margin: 10px;float:left;">  Select many jobs and click: <input type="button" value="Delete" id="job-delete-button"></div>
+    </div>
+    <table id="jobdata" class="display">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>App ID</th>
+                <th>Batch Job ID</th>
+                <th>Tags</th>
+                <th>State</th>
+            </tr>
+        </thead>
+    </table> 
+</div>
+<div id="jobs_table"></div>
+
+</div>
+</body>
+</html>

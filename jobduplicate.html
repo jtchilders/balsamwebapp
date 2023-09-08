@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.13.2/css/jquery.dataTables.min.css">
+    <script type="text/javascript" src="https://code.jquery.com/jquery-3.5.1.js"></script>
+    <script type="text/javascript" src="https://cdn.datatables.net/1.13.2/js/jquery.dataTables.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta2/dist/css/bootstrap.min.css" rel="stylesheet" crossorigin="anonymous">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta2/dist/js/bootstrap.bundle.min.js"crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/danfojs@1.1.2/lib/bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="js/rest_api_pr.js"></script>
+    <script src="js/menu_helpers.js"></script>
+    
+    <script type="text/javascript">
+// Make sure we have a site ID
+const queryString = window.location.search;
+const urlParams = new URLSearchParams(queryString);
+if(!urlParams.has('job_id')){
+    alert("URL must contain '?job_id=<job-id>'");
+}
+// retrieve the pages site_id for later filtering
+const job_id = urlParams.get('job_id');
+
+var jobdata = null;
+
+var job_parameters = {
+    "workdir": {
+        "itype": "text",
+        "dtype": "string",
+        "itest": isString,
+        "iparse": toString,
+    },
+    "tags": {
+        "itype": "text",
+        "dtype": "dictionary",
+        "itest": isObject,
+        "iparse": JSON.parse,
+    },
+    "serialized_parameters": {
+        "itype": "text",
+        "dtype": "string",
+        "itest": isString,
+        "iparse": toString,
+    },
+    "data": {
+        "itype": "text",
+        "dtype": "dictionary",
+        "itest": isObject,
+        "iparse": JSON.parse,
+    },
+    "return_code": {
+        "itype": "number",
+        "dtype": "int",
+        "itest": Number.isInteger,
+        "iparse": parseStringToInt,
+    },
+    "num_nodes": {
+        "itype": "number",
+        "imin":  1,
+        "imax":  100000,
+        "dtype": "int",
+        "itest": Number.isInteger,
+        "iparse": parseStringToInt,
+    },
+    "ranks_per_node": {
+        "itype": "number",
+        "imin":  1,
+        "imax":  1024,
+        "dtype": "int",
+        "itest": Number.isInteger,
+        "iparse": parseStringToInt,
+    },
+    "threads_per_rank": {
+        "itype": "number",
+        "imin":  0,
+        "imax":  10000,
+        "dtype": "int",
+        "itest": Number.isInteger,
+        "iparse": parseStringToInt,
+    },
+    "threads_per_core": {
+        "itype": "number",
+        "imin":  0,
+        "imax":  10000,
+        "dtype": "int",
+        "itest": Number.isInteger,
+        "iparse": parseStringToInt,
+    },
+    "launch_params": {
+        "itype": "text",
+        "dtype": "dictionary",
+        "itest": isObject,
+        "iparse": JSON.parse,
+    },
+    "gpus_per_rank": {
+        "itype": "number",
+        "imin":  0,
+        "imax":  1000,
+        "dtype": "int",
+        "itest": Number.isInteger,
+        "iparse": parseStringToInt,
+    },
+    "node_packing_count": {
+        "itype": "number",
+        "imin":  0,
+        "imax":  1000,
+        "dtype": "int",
+        "itest": Number.isInteger,
+        "iparse": parseStringToInt,
+    },
+    "wall_time_min": {
+        "itype": "number",
+        "imin":  5,
+        "imax":  2880,
+        "dtype": "int",
+        "itest": Number.isInteger,
+        "iparse": parseStringToInt,
+    },
+    "app_id": {
+        "itype": "number",
+        "dtype": "int",
+        "itest": Number.isInteger,
+        "iparse": parseStringToInt,
+    },
+    "transfers": {
+        "itype": "text",
+        "dtype": "dictionary",
+        "itest": isObject,
+        "iparse": JSON.parse,
+    },
+}
+
+function isValidJSON(str) {
+  try {
+    JSON.parse(str);
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+function isValidJSONObject(str) {
+  if(isObject(str)){
+    return true;
+  }
+  try {
+    var obj = JSON.parse(str);
+    return typeof obj === 'object' && obj !== null;
+  } catch (error) {
+    return false;
+  }
+}
+
+function isObject(variable) {
+  return typeof variable === 'object' && variable !== null;
+}
+
+function isString(variable) {
+  return typeof variable === 'string';
+}
+
+function parseStringToInt(input) {
+  if (input === null) {
+    return 0;
+  }
+  
+  if (typeof input === 'string') {
+    if (input.trim() === '') {
+      return 0;
+    } else {
+      return parseInt(input, 10);
+    }
+  }
+  
+  return input;
+}
+
+
+var rows_with_input = [
+    "gpus_per_rank",
+    "node_packing_count",
+    "num_nodes",
+    "ranks_per_node",
+    "tags",
+    "threads_per_core",
+    "threads_per_rank",
+    "transfers",
+    "wall_time_min",
+    "workdir",
+];
+    
+$(document).ready( function () {
+    console.log('doc ready');
+    $("#header_jobid").text(job_id);
+    
+    // if we are already logged in, start loading data
+    if(have_token()){
+        console.log("have token");
+        get_data();
+    }
+    // need to login before loading data
+    else{
+        console.log("no token; logging in");
+        //  no cookie found so need to setup form to get token from file.
+        do_login().then(function (response) {
+            console.log("do login completed",response);
+            get_data();
+        }).catch(function (response){
+            console.log("do login failed",response);
+        });
+    }
+    
+});
+
+function get_job_parameters(){
+    let job_pars = {};
+    for(let key in job_parameters){
+        let key_pars = job_parameters[key];
+        let test_func = key_pars["itest"];
+        if(test_func(jobdata[key])){
+            job_pars[key] = jobdata[key];
+        }
+        else{
+            let value = key_pars["iparse"](jobdata[key]);
+            if(test_func(value)){
+                job_pars[key] = value;
+            }
+            else{
+                alert(" data type test " + test_func.name +  " for key " + key + " failed.");
+            }
+        }
+    }
+    return job_pars;
+}
+
+
+function get_data(){
+    get_sites(token).then(function (response){
+        // console.log(response.url);
+        sites_data = response.data;
+        fill_sites_menu();
+    })
+    
+    jobdata_pr = get_job(token,job_id);
+    jobdata_pr.then( function (response){
+        jobdata = response['data'];
+        let table_data = [];
+
+        // must add transfers by hand since this is not returned by Balsam
+        // in job query
+        jobdata["transfers"] = {};
+        for(let key in jobdata) {
+            if( ["data","tags","launch_params","transfers"].includes(key)){
+                table_data.push( [ key, JSON.stringify(jobdata[key], null, 2) ] );
+            }
+            else if(key == "serialized_parameters"){
+                table_data.push( [ key, jobdata[key].slice(0,10) + '...' ] );
+            }
+            else{
+                table_data.push([key,jobdata[key]]);
+            }
+        }
+
+        let jobtable = $('#job_detail_table').DataTable({
+            data: table_data,
+            paging: false,
+            ordering: true,
+            info: false,
+            columnDefs: [ {
+                "targets": 1,
+                "createdCell": function (td, cellData, rowData, row, col) {
+                    if(rows_with_input.includes(rowData[0])){
+                        let job_par_settings = job_parameters[rowData[0]];
+                        // convert cell to an input field.
+                        let input_text_field = document.createElement('input')
+                        input_text_field.type = job_par_settings["itype"];
+                        if( "imin" in job_par_settings){
+                            input_text_field.imin = job_par_settings["imin"];
+                        }
+                        if( "imax" in job_par_settings){
+                            input_text_field.imin = job_par_settings["imax"];
+                        }
+                        input_text_field.value = rowData[1];
+                        input_text_field.id = rowData[0];
+                        input_text_field.classList.add("td_text_input");
+                        td.innerHTML = "";
+                        td.appendChild(input_text_field);
+                    }
+                }
+            }],
+            createdRow: function( row, data, dataIndex ) {
+                row.id = data[0];
+            },
+        });
+        
+    });
+
+    $("#submit_dups").click(function (){
+        let num_duplicates = $("#num_duplicates").val();
+        let dup_job_pars = get_job_parameters();
+        // if entry has an input field, retrieve the input value
+        for(let i in rows_with_input){
+            let key = rows_with_input[i];
+            let input_val = $("input#"+key).val();
+            let val_test_func = job_parameters[key]["itest"];
+            if(!val_test_func(input_val)){
+                let val_parse_func = job_parameters[key]["iparse"];
+                input_val = val_parse_func(input_val);
+            }
+            dup_job_pars[key] = input_val;
+        }
+        
+        let jobs = [];
+        for(let i=0;i<num_duplicates;i++){
+            jobs.push(dup_job_pars);
+        }
+
+        console.log("submitting: ",jobs);
+        create_jobs(token,jobs).then(function (response){
+            console.log("response: ",response);
+        });
+    })
+}
+    </script>
+    <style type="text/css">
+
+/* ============ desktop view ============ */
+@media all and (min-width: 992px) {
+	.navbar .nav-item .dropdown-menu{ display: none; }
+	.navbar .nav-item:hover .nav-link{   }
+	.navbar .nav-item:hover .dropdown-menu{ display: block; }
+	.navbar .nav-item .dropdown-menu{ margin-top:0; }
+    .navbar {margin-bottom: 20px;}
+}	
+/* ============ desktop view .end// ============ */
+    
+.page_content {
+  max-width: 1000px;
+  margin: auto;
+}
+
+.td_text_input {
+  width: 100%;
+}
+
+
+</style>
+
+</head>
+<body>
+<div class="page_content">
+
+
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="#">Balsam Monitor</a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#main_nav"  aria-expanded="false" aria-label="Toggle navigation">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="main_nav">
+        <ul class="navbar-nav" id="main-menu">
+            <li class="nav-item active"> <a class="nav-link" href="/static/balsamwebapp/sites.html"> Sites </a> </li>
+            <li class="nav-item"><a class="nav-link" href="#"> About </a></li>
+            <li class="nav-item dropdown">
+                <a class="nav-link  dropdown-toggle" href="#" data-bs-toggle="dropdown">  Site Dashboards  </a>
+                <ul class="dropdown-menu" id="sitedash-dropdown">
+                </ul>
+            </li>
+        </ul>
+        </div> <!-- navbar-collapse.// -->
+    </div> <!-- container-fluid.// -->
+</nav>
+
+<div id="page_title">
+    <H1> Duplicate Form for Job <span id="header_jobid"></span></H1>
+</div>
+
+<div id="job_table_area">
+    <H3> Review job options (not all are editable): </H3>
+    <table id="job_detail_table" class="display">
+        <thead>
+            <tr>
+                <th>parameter</th>
+                <th>value</th>
+            </tr>
+        </thead>
+    </table>
+</div>
+
+<div id="submit_duplicates" style="margin: 20px;">
+    <div id="choose_dups" style="float: left; margin-right: 10px;">Choose number of duplicates: <input type="text" value="1" id="num_duplicates"></div>
+    <input type="button" value="submit" id="submit_dups" style="float: left;">
+</div>
+
+
+</div>
+
+</body></html>

@@ -1,0 +1,359 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.13.2/css/jquery.dataTables.min.css">
+    <script type="text/javascript" src="https://code.jquery.com/jquery-3.5.1.js"></script>
+    <script type="text/javascript" src="https://cdn.datatables.net/1.13.2/js/jquery.dataTables.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta2/dist/css/bootstrap.min.css" rel="stylesheet" crossorigin="anonymous">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta2/dist/js/bootstrap.bundle.min.js"crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/danfojs@1.1.2/lib/bundle.min.js"></script>
+    <script src="js/rest_api_pr.js?v=21"></script>
+    
+    <script type="text/javascript">
+var sites_data = null;
+var apps_data = {};
+var jobs_data = {};
+var batch_job_data = {};
+$(document).ready(function() {
+    if(have_token()){
+        console.log("have token");
+        create_sites_table();
+    }
+    else{
+        console.log("no token; logging in");
+        //  no cookie found so need to setup form to get token from file.
+        do_login().then(function (response) {
+            console.log("do login completed",response);
+            create_sites_table();
+        }).catch(function (response){
+            console.log("do login failed",response);
+        });
+    }
+});
+
+function create_sites_table() {
+    let sites_pr = get_sites(token).then(function (response){
+        // console.log(response.url);
+        sites_data = response.data;
+        fill_sites_menu();
+    }).then( function(){
+        let pr = [];
+        for(let i=0;i<sites_data["results"].length;i++){
+            let site_id = sites_data["results"][i]["id"];
+            pr.push(get_apps(token,{site_id:site_id}));
+            pr.push(get_jobs(token,{site_id:site_id}));
+            pr.push(get_jobs(token,{site_id:site_id,state:["CREATED","AWAITING_PARENTS","READY","STAGED_IN","PREPROCESSED","RESTART_READY"]}));
+            pr.push(get_jobs(token,{site_id:site_id,state:["RUN_ERROR","RUN_TIMEOUT","FAILED"]}));
+            pr.push(get_jobs(token,{site_id:site_id,state:"JOB_FINISHED"}));
+            pr.push(get_batch_jobs(token,{site_id:site_id}));
+            pr.push(get_batch_jobs(token,{site_id:site_id,state:"finished"}));
+            pr.push(get_batch_jobs(token,{site_id:site_id,state:"running"}));
+            pr.push(get_batch_jobs(token,{site_id:site_id,state:"submit_failed"}));
+        }
+
+        Promise.all(pr).then(function(responses){
+            for(const response of responses){
+                let data = response.data;
+                let url = response.url;
+                // get site id 
+                let url_parts = url.split('&');
+                let site_id = 0;
+                for(const part of url_parts){
+                    if(part.includes("site_id")){
+                        site_id = part.split("=")[1];
+                    }
+                }
+                console.log(url,site_id);
+                if(url.includes("apps")){
+                    // console.log("apps");
+                    apps_data[site_id] = data["results"].length;
+                }
+                else if(url.includes("batch-jobs")){
+                    // console.log("batch-jobs");
+                    if(!(site_id in batch_job_data)){
+                        batch_job_data[site_id] = {};
+                    }
+                    //pending_submission --> queued pending_submission --> submit_failed queued --> running running --> finished pending_submission --> pending_deletion queued --> pending_deletion running --> pending_deletion pending_deletion --> finished
+                    // console.log(data["results"]);
+                    if(url.includes("state")){
+                        if(url.includes("finished")){
+                            batch_job_data[site_id]["finished"] = data["results"].length;
+                        }
+                        else if(url.includes("running")){
+                            batch_job_data[site_id]["running"] = data["results"].length;
+                        }
+                        else if(url.includes("submit_failed")){
+                            batch_job_data[site_id]["failed"] = data["results"].length;
+                        }
+                    }
+                    else{
+                        batch_job_data[site_id]["total"] = data["results"].length;
+                    }
+                }
+                else if(url.includes("jobs")){
+                    // console.log("jobs");
+                    if(!(site_id in jobs_data)){
+                        jobs_data[site_id] = {};
+                    }
+                    if(url.includes("state")){
+                        if(url.includes("CREATED")){
+                            jobs_data[site_id]["ready"] = data["results"].length;
+                        }
+                        else if(url.includes("FAILED")){
+                            jobs_data[site_id]["failed"] = data["results"].length;
+                        }
+                        else if(url.includes("JOB_FINISHED")){
+                            jobs_data[site_id]["finished"] = data["results"].length;
+                        }
+                    }
+                    else{
+                        jobs_data[site_id]["total"] = data["results"].length;
+                    }
+                }
+            }
+        }
+        ).then( function() {
+            console.log("fill table");
+            fill_table();
+        }).catch(error => {
+        console.error('network error:',error);
+        });
+    }).catch(error => {
+        console.error('network error:',error);
+    });
+
+}
+
+function fill_sites_menu(){
+    let sitemenu = document.getElementById("sitedash-dropdown");
+    
+    for(let i = 0;i < sites_data["results"].length; i++){
+        result = sites_data["results"][i];
+        let site_id = result["id"];
+        let site_name = result["name"];
+
+        let li = document.createElement("li");
+        let link = document.createElement("a");
+        link.setAttribute("href", '/static/balsamwebapp/sitedash.html?site_id=' + site_id);
+        link.textContent = site_name;
+        link.classList.add("dropdown-item");
+
+        li.appendChild(link);
+        sitemenu.appendChild(li);
+    }
+}
+
+function fill_table(){
+    document.getElementById("sites_count").textContent = sites_data["count"];
+    document.getElementById("sites_recv").textContent = sites_data["results"].length;
+
+    let sitedata = [];
+    let idLookup = {};
+    for(let i = 0;i < sites_data["results"].length; i++){
+        result = sites_data["results"][i];
+        let site_id = result["id"];
+        let output = {};
+        output["name"] = result["name"];
+        output["id"] = site_id;
+        output["queued_jobs"] = Object.keys(result["queued_jobs"]).length;
+
+        let created = new Date(Date.parse(result["creation_date"]))
+        output["creation_date"] = created;
+
+        let last_refresh = new Date(Date.parse(result["last_refresh"]));
+        let current_time = new Date();
+        let diff = (current_time - last_refresh ) * 1e-3 / 60;
+        let days = diff / 60 / 24;
+        output["last_refresh"] = days.toFixed(4);
+        idLookup[result["name"]] = result["id"];
+        sitedata.push(output);
+
+        output["num_jobs"] = jobs_data[site_id]["total"];
+        output["failed_jobs"] = jobs_data[site_id]["failed"];
+        output["ready_jobs"] = jobs_data[site_id]["ready"];
+        output["finished_jobs"] = jobs_data[site_id]["finished"];
+
+        output["num_apps"] = apps_data[site_id];
+
+        output["num_batchjobs"] = batch_job_data[site_id]["total"];
+        output["failed_batchjobs"] = batch_job_data[site_id]["failed"];
+        output["running_batchjobs"] = batch_job_data[site_id]["running"];
+        output["finished_batchjobs"] = batch_job_data[site_id]["finished"];
+    }
+
+    $("#sitedata").DataTable({
+        data: sitedata,
+        paging: false,
+        ordering: true,
+        info: false,
+        searching: false,
+        "columns": [
+            { data: "name" },
+            { data: "queued_jobs" },
+            { data: "last_refresh"},
+            { data: "num_apps"},
+            { data: "num_jobs"},
+            { data: "num_batchjobs"},
+        ],
+        "rowCallback":  function( row, data ) {
+            
+            // add link to name td
+            const link = document.createElement("a");
+            link.setAttribute("href", '/static/balsamwebapp/sitedash.html?site_id=' + idLookup[data.name]);
+            link.textContent = data.name;
+            if( parseFloat(data.last_refresh) < 1){
+                // set name td class
+                link.classList.add("False");
+                row.getElementsByTagName('td')[0].classList.add("False");
+            }
+            else{
+                // set name td class
+                link.classList.add("True");
+                row.getElementsByTagName('td')[0].classList.add("True");
+            }
+            row.getElementsByTagName('td')[0].textContent = "";
+            row.getElementsByTagName('td')[0].appendChild(link);
+
+        },
+        "columnDefs":[
+            {
+                "targets": 4,
+                "createdCell": function (td, cellData, rowData, row, col) {
+                    let rdy = document.createElement("span");
+                    rdy.style = "color: blue;display: inline-block;width: 5ch;";
+                    rdy.textContent = rowData["ready_jobs"];
+
+                    let done = document.createElement("span");
+                    done.style = "color: green;display: inline-block;width: 5ch;";
+                    done.textContent = rowData["finished_jobs"];
+
+                    let failed = document.createElement("span");
+                    failed.style = "color: red;display: inline-block;width: 5ch;";
+                    failed.textContent = rowData["failed_jobs"];
+
+                    td.textContent = "";
+                    td.appendChild(rdy);
+                    td.appendChild(done);
+                    td.appendChild(failed);
+                },
+                "width": "30ch",
+            },
+            {
+                "targets": 5,
+                "createdCell": function (td, cellData, rowData, row, col) {
+                    let rdy = document.createElement("span");
+                    rdy.style = "color: blue;display: inline-block;width: 5ch;";
+                    rdy.textContent = rowData["running_batchjobs"];
+
+                    let done = document.createElement("span");
+                    done.style = "color: green;display: inline-block;width: 5ch;";
+                    done.textContent = rowData["finished_batchjobs"];
+
+                    let failed = document.createElement("span");
+                    failed.style = "color: red;display: inline-block;width: 5ch;";
+                    failed.textContent = rowData["failed_batchjobs"];
+
+                    td.textContent = "";
+                    td.appendChild(rdy);
+                    td.appendChild(done);
+                    td.appendChild(failed);
+                },
+                "width": "30ch",
+            },
+        ]
+    });
+
+    
+    $('#sitedata .True').each(function(){
+        $(this).css('background-color','red');
+        $(this).css('color','white');
+    });
+    $('#sitedata .False').each(function(){
+        $(this).css('background-color','green');
+        $(this).css('color','white');
+    });   
+}
+    </script>
+    
+    <style type="text/css">
+/* unvisited link */
+.True .False a:link {
+color: white;
+text-decoration: none;
+}
+
+/* visited link */
+.True .False a:visited {
+color: white;
+text-decoration: none;
+}
+
+/* mouse over link */
+.True .False a:hover {
+color: white;
+text-decoration: underline;
+}
+
+/* selected link */
+.True .False a:active {
+color: white;
+text-decoration: none;
+}
+
+/* ============ desktop view ============ */
+@media all and (min-width: 992px) {
+	.navbar .nav-item .dropdown-menu{ display: none; }
+	.navbar .nav-item:hover .nav-link{   }
+	.navbar .nav-item:hover .dropdown-menu{ display: block; }
+	.navbar .nav-item .dropdown-menu{ margin-top:0; }
+}	
+/* ============ desktop view .end// ============ */
+
+    </style>
+</head>
+<body>
+
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="#">Balsam Monitor</a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#main_nav"  aria-expanded="false" aria-label="Toggle navigation">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="main_nav">
+        <ul class="navbar-nav" id="main-menu">
+            <li class="nav-item active"> <a class="nav-link" href="#"> Sites </a> </li>
+            <li class="nav-item"><a class="nav-link" href="#"> About </a></li>
+            <li class="nav-item dropdown">
+                <a class="nav-link  dropdown-toggle" href="#" data-bs-toggle="dropdown">  Site Dashboards  </a>
+                <ul class="dropdown-menu">
+                    <li><a class="dropdown-item" href="#"> Site Name A </a></li>
+                    <li><a class="dropdown-item" href="#"> Site Name B </a></li>
+                    <li><a class="dropdown-item" href="#"> Site Name C </a></li>
+                </ul>
+            </li>
+        </ul>
+        </div> <!-- navbar-collapse.// -->
+    </div> <!-- container-fluid.// -->
+</nav>
+
+<br>
+<div>site count: <span id="sites_count"></span> sites received: <span id="sites_recv"></span></div>
+<table id="sitedata" class="display">
+    <thead>
+        <tr>
+            <th>name</th>
+            <th>queued </th>
+            <th>last refresh (days)</th>
+            <th>apps</th>
+            <th>jobs<br><span style="color:blue;">ready</span> <span style="color:green;">finished</span> <span style="color:red;">failed</span></th>
+            <th>batch jobs<br><span style="color:blue;">running</span> <span style="color:green;">finished</span> <span style="color:red;">failed</span></th>
+        </tr>
+    </thead>
+    <tbody>
+    </tbody>
+</table>
+
+
+</body>
+</html>
