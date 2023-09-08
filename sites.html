@@ -8,7 +8,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta2/dist/css/bootstrap.min.css" rel="stylesheet" crossorigin="anonymous">
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta2/dist/js/bootstrap.bundle.min.js"crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/danfojs@1.1.2/lib/bundle.min.js"></script>
-    <script src="/static/balsamwebapp/js/rest_api_pr.js?v=21"></script>
+    <script src="js/rest_api_pr.js?v=22"></script>
     
     <script type="text/javascript">
 var sites_data = null;
@@ -291,25 +291,25 @@ document.addEventListener("DOMContentLoaded", function(){
     
     <style type="text/css">
 /* unvisited link */
-a:link {
+.True .False a:link {
 color: white;
 text-decoration: none;
 }
 
 /* visited link */
-a:visited {
+.True .False a:visited {
 color: white;
 text-decoration: none;
 }
 
 /* mouse over link */
-a:hover {
+.True .False a:hover {
 color: white;
 text-decoration: underline;
 }
 
 /* selected link */
-a:active {
+.True .False a:active {
 color: white;
 text-decoration: none;
 }
@@ -335,15 +335,14 @@ text-decoration: none;
         </button>
         <div class="collapse navbar-collapse" id="main_nav">
         <ul class="navbar-nav">
-            <li class="nav-item active"> <a class="nav-link" href="#">Home </a> </li>
+            <li class="nav-item active"> <a class="nav-link" href="#"> Sites </a> </li>
             <li class="nav-item"><a class="nav-link" href="#"> About </a></li>
-            <li class="nav-item"><a class="nav-link" href="#"> Services </a></li>
             <li class="nav-item dropdown">
-                <a class="nav-link  dropdown-toggle" href="#" data-bs-toggle="dropdown">  Hover me  </a>
+                <a class="nav-link  dropdown-toggle" href="#" data-bs-toggle="dropdown">  Site Dashboards  </a>
                 <ul class="dropdown-menu">
-                    <li><a class="dropdown-item" href="#"> Submenu item 1</a></li>
-                    <li><a class="dropdown-item" href="#"> Submenu item 2 </a></li>
-                    <li><a class="dropdown-item" href="#"> Submenu item 3 </a></li>
+                    <li><a class="dropdown-item" href="#"> Site Name A </a></li>
+                    <li><a class="dropdown-item" href="#"> Site Name B </a></li>
+                    <li><a class="dropdown-item" href="#"> Site Name C </a></li>
                 </ul>
             </li>
         </ul>
